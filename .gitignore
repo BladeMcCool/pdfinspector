@@ -1,0 +1,8 @@
+input/api_key.txt
+input/jd.txt
+output/*
+.idea
+*.png
+*.jpg
+*.pdf
+pdfinspector
