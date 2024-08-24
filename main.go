@@ -52,7 +52,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to read the response body: %v", err)
 	}
-	fmt.Printf("got %d bytes of json from the json-server\n", len(body))
+	log.Printf("got %d bytes of json from the json-server\n", len(body))
 
 	//some_jd := "Building the Future of Crypto \nOur Krakenites are a world-class team with crypto conviction, united by our desire to discover and unlock the potential of crypto and blockchain technology.\n\nWhat makes us different?\n\nKraken is a mission-focused company rooted in crypto values. As a Krakenite, you’ll join us on our mission to accelerate the global adoption of crypto, so that everyone can achieve financial freedom and inclusion. For over a decade, Kraken’s focus on our mission and crypto ethos has attracted many of the most talented crypto experts in the world.\n\nBefore you apply, please read the Kraken Culture page to learn more about our internal culture, values, and mission. We also expect candidates to familiarize themselves with the Kraken app. Learn how to create a Kraken account here.\n\nAs a fully remote company, we have Krakenites in 70+ countries who speak over 50 languages. Krakenites are industry pioneers who develop premium crypto products for experienced traders, institutions, and newcomers to the space. Kraken is committed to industry-leading security, crypto education, and world-class client support through our products like Kraken Pro, Kraken NFT, and Kraken Futures.\n\nBecome a Krakenite and build the future of crypto!\n\nProof of work\nThe team\nAt Kraken Digital Asset Exchange, the Staked team, now part of Kraken Institutional since Kraken's acquisition in December 2021, specializes in enabling non-custodial staking solutions tailored for institutional clients. Staked offers staking services across 40+ proof-of-stake (PoS) blockchains, managing billions in delegated assets. Trusted by top investors and cryptocurrency exchanges, Staked ensures optimal staking rewards.\n\nAs a member of our team, you will play a crucial role in extracting and organizing data from various blockchains preparing it for downstream analysis. Your work will maintain our high standards for data integrity and support our mission to deliver top-notch staking solutions to institutional clients. Join us to drive innovation in the cryptocurrency industry with a collaborative and curious mindset\n\nThe opportunity\nExtract and organize data from multiple blockchains using RPC, API, or smart contract calls\n\nDevelop and maintain the software stack for collecting and indexing transaction data for efficient consumption\n\nMaintain a reliable API to provide comprehensive account histories and ensure data is auditable and meets SLAs\n\nTrack and monitor public blockchain sources and find necessary data for analysis\n\nDocument data extraction processes and methodologies\n\nCollaborate with internal teams to ensure seamless integration and data flow\n\nSkills you should HODL\n3-5+ years of experience with Python and SQL, in data-intensive environments\n\nStrong experience with software engineering principles, code readability, and testing\n\nProficiency in aggregating and analyzing data\n\nExperience with SQL databases and query performance\n\nFamiliarity with Docker, Kubernetes, and other elements of our tech stack such as Typescript, Golang, Airflow, SQLAlchemy\n\nKnowledge of basic web protocols and experience with API development is a plus\n\nAbility to track down public source code and identify necessary data sources\n\nExperience with blockchain nodes and eagerness to analyze blockchain data\n\nSelf-motivated, organized, and a good communicator with a problem-solving mindset\n\nPassionate about decentralized tech and eager to drive the industry forward\n\nB.S. in Computer Science or a related field, or equivalent experience"
 	//_ = some_jd
@@ -99,6 +99,7 @@ func main() {
 	//if err != nil {
 	//	log.Fatalf("Failed to marshal JSON: %v", err)
 	//}
+	acceptable_ratio := 0.88
 
 	// Create a map to represent the API request structure
 	data := map[string]interface{}{
@@ -106,7 +107,7 @@ func main() {
 		"messages": []map[string]interface{}{
 			{
 				"role":    "system",
-				"content": "You are a helpful resume tuning person (not a bot or an AI). The response should include only the fields expected to be rendered by the application, in well-formed JSON, without any triple quoting, such that the final resume fills one page to between 87% and 92%, leaving only a small margin at the bottom.",
+				"content": fmt.Sprintf("You are a helpful resume tuning person (not a bot or an AI). The response should include only the fields expected to be rendered by the application, in well-formed JSON, without any triple quoting, such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom.", int(acceptable_ratio*100)),
 			},
 			{
 				"role":    "user",
@@ -120,23 +121,12 @@ func main() {
 				"role":    "user",
 				"content": prompt,
 			},
-
-			//this was the output, its valid, its tuned ... fun! i mean, its also terrible and results in the output being only half a page.
-			//{
-			//	"role":    "assistant",
-			//	"content": "{\n    \"personal_info\": {\n        \"name\": \"Chris A. Hagglund\",\n        \"email\": \"chris@chws.ca\",\n        \"phone\": \"250-532-9694\",\n        \"linkedin\": \"linkedin.com/in/1337-chris-hagglund\",\n        \"location\": \"Lethbridge AB\",\n        \"profile\": \"Software Engineer specializing in blockchain technology and data management\",\n        \"github\": \"https://github.com/BladeMcCool\"\n    },\n    \"key_skills\": [\n        \"Expert in Python and SQL for data-intensive environments; adept at data extraction and organization from blockchain sources.\",\n        \"Strong software engineering principles with a focus on code readability, testing, and API development.\",\n        \"Proficient in backend development with Go, Python, and Rust, particularly in cryptocurrency applications.\",\n        \"Experience with Docker, Kubernetes, and CI/CD pipelines to ensure efficient deployment and maintenance.\",\n        \"Familiar with blockchain technology and eager to explore decentralized solutions.\"\n    ],\n    \"work_history\": [\n        {\n            \"company\": \"Kraken\",\n            \"tag\": \"krk\",\n            \"companydesc\": \"Digital Asset Exchange\",\n            \"location\": \"Remote\",\n            \"jobtitle\": \"Software Engineer II\",\n            \"daterange\": \"Jan 2022 - Mar 2024\",\n            \"sortdate\": \"2024-03-11\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed and maintained a crucial API for aggregating blockchain transaction data, ensuring data integrity and adherence to SLAs while enhancing performance.\",\n                    \"sortdate\": \"2023-06-01\",\n                    \"tech\": \"Go, Docker, APIs\"\n                },\n                {\n                    \"desc\": \"Created a custom Terraform provider for syncing resources with blockchain services, facilitating critical operations for institutional clients.\",\n                    \"sortdate\": \"2022-01-24\",\n                    \"tech\": \"Terraform, Go, APIs\"\n                },\n                {\n                    \"desc\": \"Implemented a comprehensive data extraction process for public blockchain sources, enabling efficient analysis and reporting.\",\n                    \"sortdate\": \"2023-01-01\",\n                    \"tech\": \"Go, Docker, SQL\"\n                }\n            ]\n        },\n        {\n            \"company\": \"CHWS\",\n            \"tag\": \"chws\",\n            \"companydesc\": \"Software Development Consultancy\",\n            \"location\": \"Lethbridge, AB\",\n            \"jobtitle\": \"Senior Software Developer\",\n            \"daterange\": \"2010 - Present\",\n            \"sortdate\": \"2011-01-01\",\n            \"projects\": [\n                {\n                    \"desc\": \"Led the development of decentralized applications utilizing blockchain technology, including a Bitcoin Lightning Network donation system and a hosted Bitcoin wallet.\",\n                    \"sortdate\": \"2012-01-01\",\n                    \"tech\": \"Go, Python, JavaScript, Docker, IPFS\"\n                }\n            ]\n        }\n    ],\n    \"education_v2\": [\n        {\n            \"institution\": \"Humber College\",\n            \"location\": \"Toronto, ON\",\n            \"description\": \"3 year Computer Programmer/Analyst Diploma\",\n            \"graduated\": \"May 2002\",\n            \"notes\": [\n                \"Graduated with honors\"\n            ]\n        }\n    ],\n    \"skills\": [\n        \"Extensive experience with Python and SQL in data-heavy environments, particularly for blockchain data.\",\n        \"Strong problem-solving abilities with an emphasis on data integrity and performance optimization.\",\n        \"Self-motivated and organized, with a passion for decentralized technology and innovation.\"\n    ]\n}",
-			//},
-			//{
-			//	"role":    "user",
-			//	"content": "The resulting output was correctly formatted but resulted in a final render that occupied 25% of the page. Please make a similar attempt but target a longer overall final render length about quadruple that of the last attempt.",
-			//},
 		},
 		"temperature": 0.7,
 	}
 	messages := data["messages"].([]map[string]interface{}) //preserve orig
 
 	max_attempts := 7
-	acceptable_ratio := 0.88
 	for i := range max_attempts {
 		api_request_pretty, err := serializeToJSON(data)
 		writeToFile(api_request_pretty, i, "api_request_pretty")
@@ -174,18 +164,25 @@ func main() {
 		}
 		log.Printf("Got %d bytes of JSON content (at least well formed enough to be decodable) out of that last response\n", len(content))
 
-		// Step 5: Write the validated content to the filesystem
+		// Step 5: Write the validated content to the filesystem in a way the resume projects json server can read it, plus locally for posterity.
 		// Assuming the file path is up and outside of the project directory
 		// Example: /home/user/output/validated_content.json
 		outputFilePath := filepath.Join("../ReactResume/resumedata/", fmt.Sprintf("attempt%d.json", i))
-
 		err = writeValidatedContent(content, outputFilePath)
 		if err != nil {
 			log.Printf("Error writing content to file: %v\n", err)
 			return
 		}
-
 		log.Println("Content successfully written to:", outputFilePath)
+
+		// Example: /home/user/output/validated_content.json
+		localOutfilePath := filepath.Join("output", fmt.Sprintf("attempt%d.json", i))
+		err = writeValidatedContent(content, localOutfilePath)
+		if err != nil {
+			log.Printf("Error writing content to file: %v\n", err)
+			return
+		}
+		log.Println("Content successfully written to:", localOutfilePath)
 
 		//we should be able to render that updated content proposal now via gotenberg + ghostscript
 		err = makePDFRequestAndSave(i)
@@ -356,15 +353,41 @@ func dumpPDFToPNG(attempt int) error {
 		fmt.Sprintf("/workspace/attempt%d.pdf", attempt),
 	)
 
-	// Run the command
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Capture the output into a byte buffer
+	var outBuffer bytes.Buffer
+	cmd.Stdout = &outBuffer
+	cmd.Stderr = &outBuffer
 
+	// Run the command
 	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("Error running docker command: %v\n", err)
 	}
 
+	// Grab some fun stuff from the logging (or throw an error if fun stuff not found)
+	// Convert the output to a string
+	output := outBuffer.String()
+
+	// Check for specific strings in the output
+	if strings.Contains(output, "Processing pages") {
+		// Extract the range of pages being processed
+		lines := strings.Split(output, "\n")
+		var processingLine string
+		var pageLines []string
+		for _, line := range lines {
+			if strings.Contains(line, "Processing pages") {
+				processingLine = line
+			} else if strings.HasPrefix(line, "Page ") {
+				pageLines = append(pageLines, strings.TrimPrefix(line, "Page "))
+			}
+		}
+		if processingLine != "" && len(pageLines) > 0 {
+			// Log the relevant information
+			log.Println("Rendered pages", strings.Join(pageLines, ", "), "as PNG files")
+		}
+	} else {
+		return fmt.Errorf("No page processing detected in command output.")
+	}
 	return nil
 }
 
@@ -686,7 +709,7 @@ func contentRatio(img image.Image) float64 {
 	//totalPixels := bounds.Dx() * bounds.Dy()
 
 	lastColoredPixelRow := 0
-	fmt.Printf("believe image dimensions are: %d x %d\n", bounds.Max.X, bounds.Max.Y)
+	log.Printf("believe image dimensions are: %d x %d\n", bounds.Max.X, bounds.Max.Y)
 
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		//fmt.Printf("checking row %d\n", y)
@@ -701,9 +724,9 @@ func contentRatio(img image.Image) float64 {
 			}
 		}
 	}
-	fmt.Printf("lastrow found a pixel on: %v, total rows was %v\n", lastColoredPixelRow, bounds.Max.Y)
+	log.Printf("lastrow found a pixel on: %v, total rows was %v\n", lastColoredPixelRow, bounds.Max.Y)
 	lastContentAt := float64(lastColoredPixelRow) / float64(bounds.Max.Y)
-	fmt.Printf("last content found at %.5f of the document.", lastContentAt)
+	log.Printf("last content found at %.5f of the document.", lastContentAt)
 	return lastContentAt
 }
 

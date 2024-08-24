@@ -26,6 +26,7 @@ loop up to five times to get to a better resume under 1 page
         (that env stuff maybe not needed if we use go program to execute it - but we'll have to fill the pwd too)
         also srsly ask yourself why you are using one from vulhub..... DO BETTER (TODO!!!!vulhub!1!!)
         MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd):/workspace vulhub/ghostscript:9.56.1 gs -sDEVICE=pngalpha -o /workspace/out2-%03d.png -r144 /workspace/test2.pdf
+            update: using minidocks/ghostscript:latest in the code now. phew. that was close.
     think about how long the output is ...
     if its more than one page, how much more?
         save the output and panic when this happens b/c we havent had to deal with it but ....
@@ -62,3 +63,8 @@ this whole deal might work better by breaking it down and adjusting the resume i
 ```
 
 i noted also that the profile field in the respones was getting filled with something interesting but we dont use it.
+
+lets get the attemptx.json files also saved in the local output dir so that all the stuff for a given output is preserved in one place
+clean up the logging so far
+try to generate 1 complete cynical bullshit resume for another actual job, dunno if i should apply.
+try to generate 1 real kind of resume for one actual job, apply for it, note it, be careful and correct.
