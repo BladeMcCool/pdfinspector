@@ -1,134 +1,44 @@
 {
-  "personal_info": "placeholder",
-  "key_skills": [
-    "Analysing and solving problems; Proficient in self-directed learning; Adaptable to new languages, tools and frameworks; Experienced in both back-end and front-end development environments",
-    "Developing backend solutions, integrations and microservices; With Go, Python, Rust and Node.js",
-    "Building and supporting web apps; With HTML5, Javascript/ES6, React, REST, SCSS",
-    "Handling data; With Postgres, MySQL, Redis, AMQP and others",
-    "Working with a variety of tools; Experienced with Docker, LLMs, AWS, Kubernetes, JetBrains IDEs, CI systems and more"
-  ],
+  "personal_info": {
+    "name": "{candidate full name}",
+    "email": "{candidate email}",
+    "phone": "{candidate phone}",
+    "linkedin": "{candidate linkedin url}",
+    "location": "{candidate city and province/state}",
+    "profile": "{candidate profile/brief desc}",
+    "github": "{candidate github url}"
+  },
+  "skills": ["list","of","skills","..."],
   "work_history": [
     {
-      "company": "CHWS",
-      "tag": "chws",
-      "companydesc": "Software Development Consultancy",
-      "location": "Lethbridge, AB",
-      "jobtitle": "Senior Software Developer",
-      "daterange": "2010 - Present",
-      "sortdate": "2011-01-01",
+      "company": "{company name}",
+      "tag": "{company tag}",
+      "companydesc": "{company description}",
+      "location": "{company location}",
+      "jobtitle": "{company jobtitle}",
+      "daterange": "{date range at the company}",
+      "sortdate": "{sort date for display in resume work history}",
       "projects": [
         {
-          "desc": "Developed fun and interesting projects including a decentralized social network system built on IPFS, a Bitcoin Lightning Network donation invoice system for a website, a captcha solving game for 4chan users, a hosted Bitcoin wallet that can be interacted with using touch tone telephone, and this CV in React.",
-          "sortdate": "2012-01-01",
-          "tech": "Go, Docker, Nginx, Git, Python, JavaScript, Node.js, ES6, Perl, HTML5, React, MySQL, Redis, Asterisk, IPFS, LND, Bitcoind, VSCode, Github Actions",
-          "github": "https://github.com/BladeMcCool/ReactResume",
-          "location": "Remote",
-          "jobtitle": "Open Source Developer"
-        }
-      ]
-    },
-    {
-      "company": "Kraken",
-      "tag": "krk",
-      "companydesc": "Digital Asset Exchange",
-      "location": "Remote",
-      "jobtitle": "Software Engineer II",
-      "desc": "Built custom Terraform provider to maintain state with web service APIs, oversaw needed improvements to custom internal production job deployment audit trail tooling, integrated testing tools with gmail API, consolidated divergent isolated test runner tooling across multiple repos with a standardized testing kit for use in CI pipelines and local execution",
-      "tech": "Go, Docker, Rust, Nomad, Vault, GitLabCI, Bash scripting, Terraform, JIRA, ChatGPT, APIs",
-      "daterange": "Jan 2022 - Mar 2024",
-      "sortdate": "2024-03-11",
-      "projects": [
-        {
-          "desc": "Oversaw improvements to a crucial internal production deployment tool in Go which interacts with Nomad and GitLab APIs, helping to completely eliminate incidents related to incorrect deployments, integrating metrics with Prometheus for monitoring, boosting test coverage, fixing bugs and implementing requested features.",
-          "sortdate": "2022-06-01",
-          "tech": "Go, Docker, Nomad, Prometheus, Grafana"
-        },
-        {
-          "desc": "Developed a custom Terraform provider to sync resources with a 3rd party accounting service via their web API, facilitating the launch of key business segments.",
-          "sortdate": "2022-01-24",
-          "tech": "Terraform, Go, APIs"
-        },
-        {
-          "desc": "Unified isolated testing frameworks in Bash and Rust across 13 repositories encompassing the entire core backend web service, creating a consistent Gitlab CI pipeline and test environment with Docker Compose, improving test reliability and workflow efficiency.",
-          "sortdate": "2023-06-01",
-          "tech": "Bash scripting, Docker, Docker Compose, CI pipelines"
-        },
-        {
-          "desc": "Implemented an integration of in-house end-to-end and isolated testing tooling to work with the Gmail API (Rust), to facilitate automated email testing using real email, enabling new capabilities and use cases with the existing testing framework for several teams within the organization.",
-          "sortdate": "2023-01-01",
-          "tech": "Gmail API, Rust, GitLabCI"
-        }
-      ]
-    },
-    {
-      "company": "PerfectServe/Telmediq",
-      "tag": "tmq",
-      "companydesc": "Clinical Communication and Collaboration",
-      "location": "Victoria, BC",
-      "jobtitle": "Software Engineer",
-      "desc": "Interactive SMS-based survey microservice for patient followup, web API implemented with Django/Python, making use of Twilio for SMS communication. Integrations with third party scheduling systems to coordinate and sync physician schedules with existing client IT infrastructure. Adding features to and fixing issues in various microservices throughout the organization.",
-      "tech": "Django/Python, Go, Kubernetes, Spinnaker, Postgres, Twilio, Nginx",
-      "daterange": "Oct 2019 - Nov 2021",
-      "sortdate": "2021-08-15",
-      "projects": [
-        {
-          "desc": "Developed an interactive SMS-based survey microservice for patient follow-up, utilizing Django/Python and integrating Twilio for efficient SMS communication, as a drop-in replacement for a vendor product, realizing tens of thousands of dollars of monthly operational cost savings.",
-          "tech": "Django/Python, Twilio, Postgres, Kubernetes"
-        },
-        {
-          "desc": "Engineered robust integrations with third-party scheduling system APIs using Python, ensuring seamless synchronization between physician schedules and the existing client IT infrastructure.",
-          "tech": "Django/Python, APIs, Spinnaker, Kubernetes"
-        },
-        {
-          "desc": "Contributed to the enhancement and maintenance of various microservices across the organization in Python and Go, implementing REST endpoints to serve user interface components and improving service logs.",
-          "tech": "Django/Python, Go, Kubernetes, Spinnaker, Postgres, Redis, Nginx"
-        }
-      ]
-    },
-    {
-      "company": "Go2mobi",
-      "tag": "go2",
-      "companydesc": "Mobile Advertising Self-Serve DSP",
-      "location": "Victoria, BC",
-      "jobtitle": "Senior Software Developer",
-      "desc": "Built and maintained mobile advertising Real Time Bidder in Python, later transitioned to Go. Handled 500,000 queries per second on a cluster of 15 servers. Also developed processes for ETL and reporting the hundreds of millions of records per day generated by the bidder. Re-architected existing click tracking system for better performance.",
-      "tech": "Go, Python, Node.js, AWS, RabbitMQ, Redis, MySQL+Postgres",
-      "daterange": "Nov 2012 - Feb 2017",
-      "sortdate": "2017-02-01",
-      "projects": [
-        {
-          "desc": "Built and maintained mobile advertising Real Time Bidder in Python/Tornado, later transitioned to Go. Handled 500,000 queries per second on a cluster of 15 servers.",
-          "tech": "Go, Python, AWS, RabbitMQ, Redis, MySQL+Postgres"
-        },
-        {
-          "desc": "Developed processes for ETL and reporting the hundreds of millions of records per day generated by the bidder, providing key decision-making data for successful advertising campaign execution.",
-          "tech": "Python, RabbitMQ, MySQL, Redshift+RDS"
-        },
-        {
-          "desc": "Re-architected existing click tracking system away from PHP and into async Python/Tornado for better performance, boosting CTRs.",
-          "tech": "Python, AWS"
+          "desc": "{ project description, description of what was done }",
+          "sortdate": "{sort date for display in company project history}",
+          "tech": "{comma separated list of technologies used on this project}",
+          "github": "{github project link}",
+          "location": "{location project was completed from}",
+          "jobtitle": "{jobtitle while on project}"
         }
       ]
     }
   ],
   "education_v2": [
     {
-      "institution": "Humber College",
-      "location": "Toronto, ON",
-      "description": "3 year Computer Programmer/Analyst Diploma",
-      "graduated": "May 2002",
+      "institution": "{school name}",
+      "location": "{location}}",
+      "description": "{education description, diploma/degree type}",
+      "graduated": "{date graduated}",
       "notes": [
-        "Graduated with honors"
+        "relevant education notes (max one entry)"
       ]
     }
-  ],
-  "skills": [
-    "Solving complex problems involving dynamic systems with many moving parts",
-    "self-learning, adapting to new tech across full-stack development",
-    "back-end development with Go, Python, Rust, Node.js",
-    "front-end web app development using React/JSX/HTML5, ES6/Javascript, REST, SCSS",
-    "data management with Postgres, MySQL, Redis, AMQP",
-    "proficient with Docker, JetBrains IDEs, CI systems",
-    "experienced with AWS, Kubernetes"
   ]
 }

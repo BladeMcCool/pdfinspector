@@ -4,15 +4,31 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/disintegration/imaging"
 	"image"
 	_ "image/png" // Importing PNG support
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
+
+//func main() {
+//	//
+//	// Open the PNG file
+//	img, err := imaging.Open("output/out-001.png")
+//	if err != nil {
+//		log.Fatalf("Failed to open image: %v", err)
+//	}
+//
+//	//_ = whitePct(img)
+//	_ = contentEnds(img)
+//}
 
 func main() {
 
@@ -48,15 +64,28 @@ func main() {
 	//_ = content
 
 	//prompt := "Provide feedback on the following JSON. Is it well formed? What do you think the purpose is? Tell me about things marked as hide and what that might mean. Finally, how long in terms of page count do you think the final document this feeds into is?\n\nJSON: "
+	//prompt_parts := []string{
+	//	"The task is to examine a Job Description and a resume data structure with the goal of adjusting the data structure such that the final rendered resume presents the perfect candidate for the job while still keeping the final render to exactly one page. ",
+	//	"Your output JSON can simply omit anything which need not be seen in the rendered resume document (If all of the projects within a job are marked as hidden then the whole job will be hidden). ",
+	//	"The work_history contains a list of companies and projects within those companies. ",
+	//	"Feel free to adjust any descriptive text fields at the company or project level with inspiration from the target Job Description to make the candidate seem more relevant in all possible ways that do not involve overt fabrications or lies. ",
+	//	"Embellishment of anything remotely factual or possibly tangential is encouraged. ",
+	//	"Information from older company projects can be applied to current jobs descriptions. If older, currently hidden work history can be made particularly relevant, feel free to unhide it. Part of the goal is to keep the length of the final render at one page, while showing the most relevant information which makes the candidate appear a perfect fit for the target job from being hidden. ",
+	//	"Be sure to include between 3 and 5 distinct company sections. Each company section can list separate projects within it, aim for 2-3 projects within each company. Make sure that all descriptive text is highly relevant to the job description in some way but still reflects the original character of the item being changed. ",
+	//	"The target Job Description for which this candidate should appear to perfectly match is below. Pay special attention to any magic tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability:\n",
+	//	"\n--- start job description ---\n",
+	//	input.JD,
+	//	"\n--- end job description ---\n",
+	//	"The following JSON represents the current generic 1 page resume for the candidate. Much of the information in the data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more suitable for the Job Description above. ",
+	//	"The input resume data structure JSON is below:\n",
+	//	string(body),
+	//}
 	prompt_parts := []string{
-		"The task is to examine a Job Description and a resume data structure with the goal of adjusting the data structure such that the final rendered resume presents the perfect candidate for the job while still keeping the final render to exactly one page. ",
-		"Your output JSON can simply omit anything which need not be seen in the rendered resume document (If all of the projects within a job are marked as hidden then the whole job will be hidden). ",
-		"The work_history contains a list of companies and projects within those companies. ",
-		"Feel free to adjust any descriptive text fields at the company or project level with inspiration from the target Job Description to make the candidate seem more relevant in all possible ways that do not involve overt fabrications or lies. ",
-		"Embellishment of anything remotely factual or possibly tangential is encouraged. ",
-		"Information from older company projects can be applied to current jobs descriptions. If older, currently hidden work history can be made particularly relevant, feel free to unhide it. Part of the goal is to keep the length of the final render at one page, while showing the most relevant information which makes the candidate appear a perfect fit for the target job from being hidden. ",
-		"Be sure to include between 3 and 5 distinct company sections. Each company section can list separate projects within it, aim for 2-3 projects within each company. Make sure that all descriptive text is highly relevant to the job description in some way but still reflects the original character of the item being changed. ",
-		"The target Job Description for which this candidate should appear to perfectly match is below:\n",
+		"This guy needs a job ASAP. You need to make his resume look PERFECT for the job. Fake it until you make it right? Fix it up, do what it takes. Aim for 3-5 companies, each with 2-4 projects. Make them relate to the Job Description as best as possible, including possibly switching up industries and industry terms. ",
+		"Feel free to dig into those hidden companies and projects for inspiration, include whatever you think could be relevant. ",
+		"Do not claim to have worked at the target company from the Job Description unless the input resume data structure JSON from the candidate actually claims to have already worked there before. ",
+		"The target Job Description for which this candidate should appear to perfectly match is below. Pay special attention to any magic tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability (magic tokens should be placed somewhere that will get rendered such as a project description or a job title):\n",
+		"\n--- start job description ---\n",
 		input.JD,
 		"\n--- end job description ---\n",
 		"The following JSON represents the current generic 1 page resume for the candidate. Much of the information in the data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more suitable for the Job Description above. ",
@@ -77,11 +106,11 @@ func main() {
 		"messages": []map[string]interface{}{
 			{
 				"role":    "system",
-				"content": "Response should include only the fields expected to be rendered by the application, in well-formed JSON, such that the final render after content changes remains exactly one page.",
+				"content": "You are a helpful resume tuning person (not a bot or an AI). The response should include only the fields expected to be rendered by the application, in well-formed JSON, without any triple quoting, such that the final resume fills one page to between 87% and 92%, leaving only a small margin at the bottom.",
 			},
 			{
 				"role":    "user",
-				"content": "Show me an example output for the application to use",
+				"content": "Show me an example input for the resume system to ingest",
 			},
 			{
 				"role":    "assistant",
@@ -104,8 +133,10 @@ func main() {
 		},
 		"temperature": 0.7,
 	}
+	messages := data["messages"].([]map[string]interface{}) //preserve orig
 
-	max_attempts := 5
+	max_attempts := 7
+	acceptable_ratio := 0.88
 	for i := range max_attempts {
 		api_request_pretty, err := serializeToJSON(data)
 		writeToFile(api_request_pretty, i, "api_request_pretty")
@@ -146,7 +177,7 @@ func main() {
 		// Step 5: Write the validated content to the filesystem
 		// Assuming the file path is up and outside of the project directory
 		// Example: /home/user/output/validated_content.json
-		outputFilePath := filepath.Join("../ReactResume/resumedata/", "attempt.json")
+		outputFilePath := filepath.Join("../ReactResume/resumedata/", fmt.Sprintf("attempt%d.json", i))
 
 		err = writeValidatedContent(content, outputFilePath)
 		if err != nil {
@@ -156,8 +187,69 @@ func main() {
 
 		log.Println("Content successfully written to:", outputFilePath)
 
+		//we should be able to render that updated content proposal now via gotenberg + ghostscript
+		err = makePDFRequestAndSave(i)
+		if err != nil {
+			log.Printf("Error: %v\n", err)
+		}
+
+		//and the ghostscript dump to pngs ... one thing i need to do first tho is make my own ghostscript image i think b/c using a 'vuln' one out of laziness is probably horribly bad.
+		// MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd)/output:/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out-%03d.png -r144 /workspace/attempt.pdf
+		err = dumpPDFToPNG(i)
+
+		result, err := inspectPNGFiles("output", i)
+		if err != nil {
+			log.Printf("Error inspecting png files: %v\n", err)
+		}
+
+		log.Printf("inspect result: %#v", result)
+		if result.NumberOfPages == 0 {
+			log.Printf("no pages, idk just stop")
+			break
+		}
+
+		tryNewPrompt := false
+		var tryPrompt string
+		if result.NumberOfPages > 1 {
+			if result.NumberOfPages > 2 {
+				log.Println("too many pages , this could be interesting but stop for now")
+				tryNewPrompt = true
+				tryPrompt = fmt.Sprintf("That was way too long, reduce the amount of content to try to get it down to one full page by summarizing or removing some existing project descriptions, removing projects within companies or by shortening up the skills list. Remember to make the candidate still look great in relation to the Job Description supplied earlier!")
+			} else {
+				reduceByPct := int((result.LastPageContentRatio / (1 + result.LastPageContentRatio)) * 100)
+				log.Printf("only one extra page .... reduce by %d%%", reduceByPct)
+				tryNewPrompt = true
+				tryPrompt = fmt.Sprintf("Too long, reduce by %d%%, by making minimal edits to the prior output as possible. Sometimes going overboard on skills makes it too long. Remember to make the candidate still look great in relation to the Job Description supplied earlier!", reduceByPct)
+			}
+		} else if result.NumberOfPages == 1 && result.LastPageContentRatio < acceptable_ratio {
+			log.Println("make it longer ...")
+			tryNewPrompt = true
+			tryPrompt = fmt.Sprintf("Not long enough when rendered, was only %d%% of the page. Fill it up to between %d%% and 95%%. You can bulk up the content of existing project descriptions, add new projects within companies or by beefing up the skills list. Remember to make the candidate look even greater in relation to the Job Description supplied earlier!", int(result.LastPageContentRatio*100), int(acceptable_ratio*100))
+
+			//try to make it longer!!! - include the assistants last message in the new prompt so it can see what it did
+		} else if result.NumberOfPages == 1 && result.LastPageContentRatio >= acceptable_ratio {
+			log.Printf("over %d%% and still on one page? nice. we should stop (determined complete after attempt index %d).\n", int(acceptable_ratio*100), i)
+			break
+		}
+		log.Printf("will try new prompt: %s", tryPrompt)
+		if tryNewPrompt {
+			data["messages"] = append(messages, []map[string]interface{}{
+				{
+					"role":    "assistant",
+					"content": content,
+				}, {
+					"role":    "user",
+					"content": tryPrompt,
+				},
+			}...)
+		}
+		//messages = append(messages, )
+		////and prompt for a length adjustment as required. this is going to be experimental for a bit i think.
+		//messages = append(messages, map[string]interface{})
+		//data["messages"] = messages
+
 		//fmt.Println(content)
-		break
+		//break
 		_ = i
 		_ = output
 	}
@@ -190,6 +282,162 @@ func main() {
 
 }
 
+// Struct to hold the inspection results
+type inspectResult struct {
+	NumberOfPages        int
+	LastPageContentRatio float64
+}
+
+// inspectPNGFiles counts all the PNG files in the output directory and calculates the content ratio of the last page
+func inspectPNGFiles(outputDir string, attempt int) (inspectResult, error) {
+	result := inspectResult{}
+
+	// Read the files in the output directory
+	files, err := os.ReadDir(outputDir)
+	if err != nil {
+		return result, fmt.Errorf("failed to read output directory: %v", err)
+	}
+
+	// Filter and collect PNG files
+	var pngFiles []string
+	for _, file := range files {
+		if !strings.HasPrefix(file.Name(), fmt.Sprintf("out%d-", attempt)) {
+			continue
+		}
+		if strings.HasSuffix(file.Name(), ".png") {
+			pngFiles = append(pngFiles, filepath.Join(outputDir, file.Name()))
+		}
+	}
+
+	// Sort the PNG files alphanumerically
+	sort.Strings(pngFiles)
+	log.Printf("will be treating the last of these files in this list as the last page to look at: %v\n", pngFiles)
+
+	// If no PNG files were found, return the result with zero values
+	if len(pngFiles) == 0 {
+		return result, nil
+	}
+
+	// Update the number of pages in the result
+	result.NumberOfPages = len(pngFiles)
+
+	// Calculate the content ratio of the last PNG file
+	lastPage := pngFiles[len(pngFiles)-1]
+
+	img, err := imaging.Open(lastPage)
+	if err != nil {
+		log.Fatalf("Failed to open image: %v", err)
+	}
+
+	result.LastPageContentRatio = contentRatio(img)
+
+	return result, nil
+}
+
+func dumpPDFToPNG(attempt int) error {
+
+	// Get the current working directory
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("Error getting current directory: %v\n", err)
+	}
+
+	// Construct the output directory path
+	outputDir := filepath.Join(currentDir, "output")
+
+	// Prepare the docker run command and arguments
+	cmd := exec.Command("docker", "run", "--rm",
+		"-v", fmt.Sprintf("%s:/workspace", outputDir),
+		"minidocks/ghostscript:latest",
+		"gs",
+		"-sDEVICE=pngalpha",
+		"-o", fmt.Sprintf("/workspace/out%d-%%03d.png", attempt),
+		"-r144",
+		fmt.Sprintf("/workspace/attempt%d.pdf", attempt),
+	)
+
+	// Run the command
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("Error running docker command: %v\n", err)
+	}
+
+	return nil
+}
+
+func makePDFRequestAndSave(attempt int) error {
+	// Step 1: Create a new buffer and a multipart writer
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+
+	// Step 2: Add the "url" field to the multipart form
+	urlField, err := writer.CreateFormField("url")
+	if err != nil {
+		return fmt.Errorf("failed to create form field: %v", err)
+	}
+	_, err = io.WriteString(urlField, fmt.Sprintf("http://host.docker.internal:3000/?resumedata=attempt%d", attempt))
+	if err != nil {
+		return fmt.Errorf("failed to write to form field: %v", err)
+	}
+
+	// Step 3: Close the multipart writer to finalize the form data
+	err = writer.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close multipart writer: %v", err)
+	}
+
+	// Step 4: Create a new POST request with the multipart form data
+	req, err := http.NewRequest("POST", "http://localhost:80/forms/chromium/convert/url", &requestBody)
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %v", err)
+	}
+
+	// Step 5: Set the Content-Type header
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	// Step 6: Send the HTTP request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send HTTP request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Step 7: Check the response status code
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// Step 8: Write the response body (PDF) to the output file
+	outputDir := "output"
+	outputFilePath := filepath.Join(outputDir, fmt.Sprintf("attempt%d.pdf", attempt))
+
+	// Create the output directory if it doesn't exist
+	err = os.MkdirAll(outputDir, 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create output directory: %v", err)
+	}
+
+	// Create the output file
+	file, err := os.Create(outputFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %v", err)
+	}
+	defer file.Close()
+
+	// Copy the response body to the output file
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to write PDF to file: %v", err)
+	}
+
+	log.Printf("PDF saved to %s\n", outputFilePath)
+	return nil
+}
+
 func checkForPreexistingAPIOutput(directory, filenameFragment string, counter int) (bool, string, error) {
 	// Construct the filename
 	filename := fmt.Sprintf("%s_%d.txt", filenameFragment, counter)
@@ -216,6 +464,7 @@ func checkForPreexistingAPIOutput(directory, filenameFragment string, counter in
 }
 
 func makeAPIRequest(apiBody interface{}, apiKey string, counter int) (string, error) {
+	//panic("slow down there son, you really want to hit the paid api at this time?")
 	// Serialize the interface to pretty-printed JSON
 	jsonData, err := json.Marshal(apiBody)
 	if err != nil {
@@ -431,19 +680,7 @@ func findCommentIndex(line string) int {
 	return -1
 }
 
-//func main() {
-//  //
-//	// Open the PNG file
-//	img, err := imaging.Open("out2-002.png")
-//	if err != nil {
-//		log.Fatalf("Failed to open image: %v", err)
-//	}
-//
-//	_ = whitePct(img)
-//	_ = contentEnds(img)
-//}
-
-func contentEnds(img image.Image) float64 {
+func contentRatio(img image.Image) float64 {
 	// Get image dimensions
 	bounds := img.Bounds()
 	//totalPixels := bounds.Dx() * bounds.Dy()
@@ -452,12 +689,14 @@ func contentEnds(img image.Image) float64 {
 	fmt.Printf("believe image dimensions are: %d x %d\n", bounds.Max.X, bounds.Max.Y)
 
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		//fmt.Printf("checking row %d\n", y)
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 
 			r, g, b, a := img.At(x, y).RGBA()
-			if !isWhite(r, g, b, a) {
-				lastColoredPixelRow = y
-				fmt.Printf("Found a nonwhite/nontransparent pixel on row %d in column %d\n", y, x)
+			//fmt.Printf("x: %d, y: %d, colorcode: %d %d %d (alpha: %d)\n", x, y, r, g, b, a)
+			if isColored(r, g, b, a) {
+				lastColoredPixelRow = y + 1
+				//fmt.Printf("Found a nonwhite/nontransparent pixel on row %d in column %d\n", y, x)
 				break //no need to check any further along this line.
 			}
 		}
@@ -493,6 +732,17 @@ func whitePct(img image.Image) float64 {
 	fmt.Printf("Checked pixels: : %d\n", pixels)
 
 	return whiteSpacePercentage
+}
+
+func isColored(r, g, b, a uint32) bool {
+	const color_threshold = 0.9 * 0xffff //idk, using a threshold was a robots idea, seemed reasonable -- but also probably not neccesary. using 1.0 (eg not using it) gives a similar result.
+	const alpha_threshold = 0.1 * 0xffff //idk, using a threshold was a robots idea, seemed reasonable -- but also probably not neccesary. using 1.0 (eg not using it) gives a similar result.
+	//also .... transparent with no color == white when on screen as a pdf so ....
+	//return a > 0 && float64(r) >= threshold && float64(g) >= threshold && float64(b) >= threshold
+	//if r == 0 && g == 0 && b == 0 && a == 0 {
+	//	return false
+	//}
+	return float64(a) > alpha_threshold && float64(r) <= color_threshold && float64(g) <= color_threshold && float64(b) <= color_threshold
 }
 
 func isWhite(r, g, b, a uint32) bool {
