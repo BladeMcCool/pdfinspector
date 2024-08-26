@@ -1,5 +1,4 @@
-input/api_key.txt
-input/jd.txt
+input/*
 output/*
 .idea
 *.png

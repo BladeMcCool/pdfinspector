@@ -1,0 +1,9 @@
+{
+  "company_name": "{the name of the company where the job is}",
+  "job_title": "{extract job title from Job Description text}",
+  "keywords": ["list","of","key","competencies","and","skills","the","successful","candidate","will","have","..."],
+  "location": "{location of company, if provided}",
+  "remote_ok": "{true, false or null}",
+  "salary_info": "{any provided salary range or, 'unknown' if no info found}",
+  "process": "{any notes on hiring process, especially mentions of take-home assessment}"
+}

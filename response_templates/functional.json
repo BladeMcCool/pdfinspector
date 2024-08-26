@@ -1,0 +1,41 @@
+{
+  "personal_info": {
+    "name": "{candidate full name}",
+    "email": "{candidate email}",
+    "phone": "{candidate phone}",
+    "linkedin": "{candidate linkedin url}",
+    "location": "{candidate city and province/state}",
+    "profile": "{descriptive profile text}",
+    "github": "{candidate github url}"
+  },
+  "education": [
+    {
+      "institution": "{school name}",
+      "location": "{location}",
+      "description": "{education description, diploma/degree type}",
+      "graduated": "{date graduated}",
+      "notes": ["relevant education notes (max one entry)"]
+    }
+  ],
+  "functional_areas": [
+    {
+      "title": "{title or heading for the functional area of work}",
+      "examples": [
+        {
+          "headline": "{description lead-in (will be bolded)}",
+          "body": "{remainder of description}",
+          "tech": ["examples", "of", "tech", "used","..."],
+          "daterange": "{date range of the work}"
+        }
+      ]
+    }
+  ],
+  "employment_history": [
+    {
+      "title": "{jobtitle}",
+      "company": "{company name}",
+      "location": "{company location}",
+      "daterange": "{date range at the company}"
+    }
+  ]
+}

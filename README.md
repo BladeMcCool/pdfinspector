@@ -1,8 +1,20 @@
+next:
+    - find a layout template in a directory of them prepared already, it really should usually just change with the layout i think.
+    - get some metadata about the JD in a structured way and save it with the outputs. (company name, job title, keywords list, process notes (esp if a takehome assignment mentioned), remote ok? )
+        - how about shoving into the CV "github portfolio available in liu of take-home assessments. pick an existing project and lets talk about it." because i'm fucking done with this shit.
+    - use output_dir in all places where needed
+    - camelcase the vars names??? or whatever is go standard just be fuckin consistent omg.
+    - if prompt.txt is present, use the contents, otherwise use our standard one (note, the tune-up prompts might not be generic enough to work properly in all layouts atm!)
+    - find a way to test these pdfs with "workday" to see if it can extract the infos b/c if not then that may indicate potential problems.
+        - Indeed, Dice too i guess
+    - consider the possiblity of targeting a page length other than 1 page.
+    - are we being sure that the content actually is covering:  positions, responsibilities, and key skills? (i think so)
+
 ```
 if want to run the resume in docker do like:
     docker run --rm -p 3001:3000 -d --name resume --network my_network ghcr.io/blademccool/resume:master
 
-new logix todo:
+new logix todo (update, this is all basically done at the moment -- still havent had it make the thing 3 pages so i havent dealt with more than a little bit of overflow onto a second page):
 ---------------
 prepare initial prompto
     like currently, with system, initial user and sample response message, followed by main prompt.
@@ -24,9 +36,8 @@ loop up to five times to get to a better resume under 1 page
         curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url=http://host.docker.internal:3000 -o ../pdfinspector/test2.pdf
     cause a ghostscript png render of the pdf
         (that env stuff maybe not needed if we use go program to execute it - but we'll have to fill the pwd too)
-        also srsly ask yourself why you are using one from vulhub..... DO BETTER (TODO!!!!vulhub!1!!)
-        MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd):/workspace vulhub/ghostscript:9.56.1 gs -sDEVICE=pngalpha -o /workspace/out2-%03d.png -r144 /workspace/test2.pdf
-            update: using minidocks/ghostscript:latest in the code now. phew. that was close.
+        MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd):/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out2-%03d.png -r144 /workspace/test2.pdf
+        MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd):/workspace minidocks/ghostscript:latest gs -sDEVICE=txtwrite -o /workspace/out.txt /workspace/test2.pdf
     think about how long the output is ...
     if its more than one page, how much more?
         save the output and panic when this happens b/c we havent had to deal with it but ....
@@ -56,15 +67,16 @@ loop up to five times to get to a better resume under 1 page
         after the last respondo, ask it to describe how it adjusted things in the JSON. (adjust the system message and api call to make sense in the context of asking for commentary on how the final json relfects changes that make the candidate look ideal for this job, what changes etc)
         make note of what it said :)
 
-
-
-----
-this whole deal might work better by breaking it down and adjusting the resume in chunks based on the jd, eg series of promptos to adjust the sections for verbiage, mention its ok to take hidden experiences and use info from them to craft adjustments.
-```
-
 i noted also that the profile field in the respones was getting filled with something interesting but we dont use it.
 
 lets get the attemptx.json files also saved in the local output dir so that all the stuff for a given output is preserved in one place
 clean up the logging so far
 try to generate 1 complete cynical bullshit resume for another actual job, dunno if i should apply.
 try to generate 1 real kind of resume for one actual job, apply for it, note it, be careful and correct.
+
+
+this whole deal might work better by breaking it down and adjusting the resume in chunks based on the jd, eg series of promptos to adjust the sections for verbiage, mention its ok to take hidden experiences and use info from them to craft adjustments.
+
+- make a functional layout that can be toggled. see https://www.reddit.com/r/recruitinghell/comments/1eo69xv/the_resume_format_that_landed_me_interviews_for/
+
+```
