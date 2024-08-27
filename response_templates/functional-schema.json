@@ -117,7 +117,7 @@
             "description": "Optional property to hide this Functional Areas entry."
           }
         },
-        "required": ["title", "key_contributions"],
+        "required": ["title", "key_contributions", "hide"],
         "additionalProperties": false
       }
     },
@@ -143,11 +143,11 @@
             "description": "The date range during which the candidate worked at the company."
           },
           "hide": {
-            "type": "boolean",
+            "type": ["boolean","null"],
             "description": "Optional property to hide this Employment entry."
           }
         },
-        "required": ["title", "company", "location", "daterange"],
+        "required": ["title", "company", "location", "daterange", "hide"],
         "additionalProperties": false
       }
     }
