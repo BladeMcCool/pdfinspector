@@ -40,7 +40,7 @@ func main() {
 	max_attempts := 7
 	layout := "functional"
 	//layout := "default"
-	outputDir := "output" //todo use this everywhere instead of hardcoding.
+	outputDir := "output"
 
 	input, err := ReadInput(inputDir, layout)
 	if err != nil {
@@ -53,6 +53,7 @@ func main() {
 		log.Println("error taking notes on JD: ", err)
 		return
 	}
+	//panic("does it look right - before proceeding")
 
 	// get JSON of the current complete resume including all the hidden stuff, this hits an express server that imports the reactresume resumedata.mjs and outputs it as json.
 	resp, err := http.Get(fmt.Sprintf("http://localhost:3002?layout=%s", layout))
@@ -96,22 +97,33 @@ func main() {
 		"model": "gpt-4o-mini",
 		"messages": []map[string]interface{}{
 			{
-				"role":    "system",
-				"content": fmt.Sprintf("You are a helpful resume tuning person (not a bot or an AI). The response should include only the fields expected to be rendered by the application, in well-formed JSON, without any triple quoting, such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom.", int(acceptable_ratio*100)),
+				"role": "system",
+				//"content": fmt.Sprintf("You are a helpful resume tuning person (not a bot or an AI). The response should include only the fields expected to be rendered by the application, in well-formed JSON, without any triple quoting, such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom.", int(acceptable_ratio*100)),
+				//"content": fmt.Sprintf("You are a helpful resume tuning assistant. The response should include resume content such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom. The output must respect the supplied JSON schema including having some value for fields identified as required in the schema", int(acceptable_ratio*100)),
+				"content": fmt.Sprintf("You are a helpful resume tuning assistant. The response should include resume content such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom.", int(acceptable_ratio*100)),
 			},
-			{
-				"role":    "user",
-				"content": "Show me an example input for the resume system to ingest",
-			},
-			{
-				"role":    "assistant",
-				"content": input.ExpectResponse,
-			},
+			//{
+			//	"role":    "user",
+			//	"content": "Show me an example input for the resume system to ingest",
+			//},
+			//{
+			//	"role":    "assistant",
+			//	"content": input.ExpectResponse,
+			//},
 			{
 				"role":    "user",
 				"content": prompt,
 			},
 		},
+		"response_format": map[string]interface{}{
+			"type": "json_schema",
+			"json_schema": map[string]interface{}{
+				"name":   "candidate_resume",
+				"strict": true,
+				"schema": input.ExpectResponseSchema,
+			},
+		},
+		//"max_tokens":  2000, //idk i had legit response go over 2000 because it was wordy. not sure that bug where it generated full stream of garbage happened again after putting on 'strict' tho. keep an eye on things.
 		"temperature": 0.7,
 	}
 	messages := data["messages"].([]map[string]interface{}) //preserve orig
@@ -289,18 +301,19 @@ func main() {
 }
 
 func takeNotesOnJD(input *Input, outputDir string) error {
-	//todo - would like to have a api call that passes in the JD and gets a different JSON template filled in with some stuff from the JD
-	//  (company name, job title, keywords list, process notes (esp if a takehome assignment mentioned), remote ok?)
-	log.Println("TODO -- take notes on jd")
-
-	JDResponseFormat, err := os.ReadFile(filepath.Join("response_templates", "jdinfo.json"))
+	//JDResponseFormat, err := os.ReadFile(filepath.Join("response_templates", "jdinfo.json"))
+	jDResponseSchemaRaw, err := os.ReadFile(filepath.Join("response_templates", "jdinfo-schema.json"))
 	if err != nil {
 		log.Fatalf("failed to read expect_response.json: %v", err)
 	}
 	// Validate the JSON content
-	if err := validateJSON(string(JDResponseFormat)); err != nil {
+	jDResponseSchema, err := decodeJSON(string(jDResponseSchemaRaw))
+	if err != nil {
 		return err
 	}
+	//if err := validateJSON(string(jDResponseSchemaRaw)); err != nil {
+	//	return err
+	//}
 	prompt := strings.Join([]string{
 		"Extract information from the following Job Description. Take note of the name of the company, the job title, and most importantly the list of key words that a candidate will have in their CV in order to get through initial screening. Additionally, extract any location, remote-ok status, salary info and hiring process notes which can be succinctly captured.",
 		"\n--- start job description ---\n",
@@ -313,22 +326,40 @@ func takeNotesOnJD(input *Input, outputDir string) error {
 		"messages": []map[string]interface{}{
 			{
 				"role":    "system",
-				"content": "You are a Job Description info extractor assistant. The response should include only the fields of the provided JSON example, in well-formed JSON, without any triple quoting, such that your responses can be ingested directly into an information system.",
+				"content": "You are a Job Description info extractor assistant.",
 			},
-			{
-				"role":    "user",
-				"content": "Show me an example input for the Job Description information system to ingest",
-			},
-			{
-				"role":    "assistant",
-				"content": JDResponseFormat,
-			},
+			//{
+			//	"role":    "system",
+			//	"content": "You are a Job Description info extractor assistant. The response should include only the fields of the provided JSON example, in well-formed JSON, without any triple quoting, such that your responses can be ingested directly into an information system.",
+			//},
+			//{
+			//	"role":    "user",
+			//	"content": "Show me an example input for the Job Description information system to ingest",
+			//},
+			//{
+			//	"role":    "assistant",
+			//	"content": JDResponseFormat,
+			//},
 			{
 				"role":    "user",
 				"content": prompt,
 			},
 		},
+		"response_format": map[string]interface{}{
+			"type": "json_schema",
+			"json_schema": map[string]interface{}{
+				"name":   "job_description",
+				"strict": true,
+				"schema": jDResponseSchema,
+			},
+		},
+		//"max_tokens":  100,
 		"temperature": 0.7,
+	}
+	api_request_pretty, err := serializeToJSON(apirequest)
+	writeToFile(api_request_pretty, 0, "jd_info_request_pretty", outputDir)
+	if err != nil {
+		log.Fatalf("Failed to marshal final JSON: %v", err)
 	}
 
 	exists, output, err := checkForPreexistingAPIOutput(outputDir, "jd_info_response_raw", 0)
@@ -748,17 +779,17 @@ type APIResponse struct {
 
 // Input struct to hold the contents of jd.txt and expect_response.json
 type Input struct {
-	InputDir       string
-	JD             string
-	ExpectResponse string
-	APIKey         string
+	InputDir             string
+	JD                   string
+	ExpectResponseSchema interface{}
+	APIKey               string
 }
 
 // ReadInput reads the input files from the "input" directory and returns an Input struct
 func ReadInput(dir, layout string) (*Input, error) {
 	// Define file paths
 	jdFilePath := filepath.Join(dir, "jd.txt")
-	expectResponseFilePath := filepath.Join("response_templates", fmt.Sprintf("%s.json", layout))
+	expectResponseFilePath := filepath.Join("response_templates", fmt.Sprintf("%s-schema.json", layout))
 	apiKeyFilePath := filepath.Join(dir, "api_key.txt")
 
 	// Read expect_response.json
@@ -767,7 +798,8 @@ func ReadInput(dir, layout string) (*Input, error) {
 		return nil, fmt.Errorf("failed to read expect_response.json: %v", err)
 	}
 	// Validate the JSON content
-	if err := validateJSON(string(expectResponseContent)); err != nil {
+	expectResponseSchema, err := decodeJSON(string(expectResponseContent))
+	if err != nil {
 		return nil, err
 	}
 
@@ -793,10 +825,11 @@ func ReadInput(dir, layout string) (*Input, error) {
 
 	// Return the populated Input struct
 	return &Input{
-		InputDir:       dir,
-		JD:             string(jdContent),
-		ExpectResponse: string(expectResponseContent),
-		APIKey:         apiKey,
+		InputDir: dir,
+		JD:       string(jdContent),
+		//ExpectResponse: string(expectResponseContent),
+		ExpectResponseSchema: expectResponseSchema,
+		APIKey:               apiKey,
 	}, nil
 }
 
@@ -807,6 +840,25 @@ func validateJSON(data string) error {
 		return fmt.Errorf("invalid JSON: %v", err)
 	}
 	return nil
+}
+
+// decodeJSON takes a JSON string and returns a deserialized object as an interface{}.
+func decodeJSON(data string) (interface{}, error) {
+	var js json.RawMessage
+
+	// Unmarshal the JSON string into json.RawMessage to verify its validity
+	if err := json.Unmarshal([]byte(data), &js); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %v", err)
+	}
+
+	// If the JSON is valid, you can return it as an interface{}
+	var result interface{}
+	if err := json.Unmarshal(js, &result); err != nil {
+		return nil, fmt.Errorf("error decoding JSON into interface{}: %v", err)
+	}
+
+	// Return the deserialized object
+	return result, nil
 }
 
 // cleanAndValidateJSON takes MJS file contents as a string, strips non-JSON content

@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "personal_info": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The candidate's full name."
+        },
+        "email": {
+          "type": "string",
+          "description": "The candidate's email address."
+        },
+        "phone": {
+          "type": "string",
+          "description": "The candidate's phone number."
+        },
+        "linkedin": {
+          "type": "string",
+          "description": "The candidate's LinkedIn profile URL."
+        },
+        "location": {
+          "type": "string",
+          "description": "The candidate's city and province/state."
+        },
+        "profile": {
+          "type": "string",
+          "description": "A descriptive profile text for the candidate."
+        },
+        "github": {
+          "type": "string",
+          "description": "The candidate's GitHub profile URL."
+        }
+      },
+      "required": ["name", "email", "phone", "linkedin","location","profile","github"],
+      "additionalProperties": false
+    },
+    "education": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "institution": {
+            "type": "string",
+            "description": "The name of the educational institution."
+          },
+          "location": {
+            "type": ["string","null"],
+            "description": "The location of the educational institution."
+          },
+          "description": {
+            "type": "string",
+            "description": "A description of the education received, including the diploma or degree type."
+          },
+          "graduated": {
+            "type": "string",
+            "description": "The date of graduation."
+          },
+          "notes": {
+            "type": ["array","null"],
+            "items": {
+              "type": "string"
+            },
+            "description": "Relevant notes about the education (maximum of one entry)."
+          }
+        },
+        "required": ["institution", "location","description", "graduated", "notes"],
+        "additionalProperties": false
+      }
+    },
+    "functional_areas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Title or heading for the functional area of work."
+          },
+          "key_contributions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "headline": {
+                  "type": "string",
+                  "description": "Description lead-in, typically bolded."
+                },
+                "body": {
+                  "type": "string",
+                  "description": "The remainder of the description."
+                },
+                "tech": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Examples of technologies used in this functional area."
+                },
+                "daterange": {
+                  "type": "string",
+                  "description": "The date range during which the work was performed."
+                },
+                "hide": {
+                  "type": ["boolean","null"],
+                  "description": "Optional property to hide this Key Contributions entry."
+                }
+              },
+              "required": ["headline", "body", "tech", "daterange", "hide"],
+              "additionalProperties": false
+            }
+          },
+          "hide": {
+            "type": ["boolean","null"],
+            "description": "Optional property to hide this Functional Areas entry."
+          }
+        },
+        "required": ["title", "key_contributions"],
+        "additionalProperties": false
+      }
+    },
+    "employment_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "The job title held at the company."
+          },
+          "company": {
+            "type": "string",
+            "description": "The name of the company."
+          },
+          "location": {
+            "type": "string",
+            "description": "The location of the company."
+          },
+          "daterange": {
+            "type": "string",
+            "description": "The date range during which the candidate worked at the company."
+          },
+          "hide": {
+            "type": "boolean",
+            "description": "Optional property to hide this Employment entry."
+          }
+        },
+        "required": ["title", "company", "location", "daterange"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["personal_info", "education", "functional_areas", "employment_history"],
+  "additionalProperties": false
+}

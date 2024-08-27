@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft/2020-12/schema",
+  "title": "Job Listing Schema",
+  "type": "object",
+  "properties": {
+    "company_name": {
+      "type": "string",
+      "description": "The name of the company where the job is located."
+    },
+    "job_title": {
+      "type": "string",
+      "description": "The extracted job title from the job description text."
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "A list of key competencies and skills the successful candidate should have."
+    },
+    "location": {
+      "type": "string",
+      "description": "The location of the company, if provided."
+    },
+    "remote_ok": {
+      "type": ["boolean", "null"],
+      "description": "Indicates if remote work is acceptable. Can be true, false, or null if not specified."
+    },
+    "salary_info": {
+      "type": ["string","null"],
+      "description": "Any provided salary range or 'unknown' if no information is found."
+    },
+    "process": {
+      "type": ["string","null"],
+      "description": "Any notes on the hiring process, especially mentions of take-home assessments."
+    }
+  },
+  "required": ["company_name", "job_title", "keywords", "location", "remote_ok" ,"salary_info", "process"],
+  "additionalProperties": false
+}

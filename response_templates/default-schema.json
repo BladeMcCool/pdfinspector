@@ -1,0 +1,163 @@
+{
+  "$schema": "http://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "personal_info": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The candidate's full name."
+        },
+        "email": {
+          "type": "string",
+          "description": "The candidate's email address."
+        },
+        "phone": {
+          "type": "string",
+          "description": "The candidate's phone number."
+        },
+        "linkedin": {
+          "type": ["string","null"],
+          "description": "The candidate's LinkedIn profile URL."
+        },
+        "location": {
+          "type": "string",
+          "description": "The candidate's city and province/state."
+        },
+        "profile": {
+          "type": ["string","null"],
+          "description": "A brief description or profile of the candidate."
+        },
+        "github": {
+          "type": ["string","null"],
+          "description": "The candidate's GitHub profile URL."
+        }
+      },
+      "required": ["name", "email", "phone", "linkedin", "location", "profile", "github"],
+      "additionalProperties": false
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "A list of skills the candidate possesses."
+    },
+    "work_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "company": {
+            "type": "string",
+            "description": "The name of the company."
+          },
+          "tag": {
+            "type": "string",
+            "description": "A short tag or label for the company."
+          },
+          "companydesc": {
+            "type": ["string","null"],
+            "description": "A brief description of the company."
+          },
+          "location": {
+            "type": "string",
+            "description": "The location of the company."
+          },
+          "jobtitle": {
+            "type": "string",
+            "description": "The job title held at the company."
+          },
+          "daterange": {
+            "type": "string",
+            "description": "The date range during which the candidate worked at the company."
+          },
+          "sortdate": {
+            "type": "string",
+            "description": "A date used for sorting the work history entries."
+          },
+          "hide": {
+            "type": ["boolean","null"],
+            "description": "Optional property to hide this Company entry."
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "desc": {
+                  "type": "string",
+                  "description": "A description of the project and what was done."
+                },
+                "sortdate": {
+                  "type": "string",
+                  "description": "A date used for sorting the project entries."
+                },
+                "tech": {
+                  "type": "string",
+                  "description": "A comma-separated list of technologies used on this project."
+                },
+                "github": {
+                  "type": ["string","null"],
+                  "description": "A link to the project's GitHub repository."
+                },
+                "location": {
+                  "type": "string",
+                  "description": "The location from where the project was completed."
+                },
+                "jobtitle": {
+                  "type": "string",
+                  "description": "The job title held while working on the project."
+                },
+                "hide": {
+                  "type": ["boolean","null"],
+                  "description": "Optional property to hide this Project entry."
+                }
+              },
+              "required": ["desc","sortdate","tech","github","location","jobtitle","hide"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["company", "tag", "companydesc", "location", "jobtitle", "daterange", "sortdate", "hide", "projects"],
+        "additionalProperties": false
+      }
+    },
+    "education_v2": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "institution": {
+            "type": "string",
+            "description": "The name of the educational institution."
+          },
+          "location": {
+            "type": ["string","null"],
+            "description": "The location of the educational institution."
+          },
+          "description": {
+            "type": "string",
+            "description": "A description of the education received, including the diploma or degree type."
+          },
+          "graduated": {
+            "type": "string",
+            "description": "The date of graduation."
+          },
+          "notes": {
+            "type": ["array","null"],
+            "items": {
+              "type": "string"
+            },
+            "description": "Relevant notes about the education (maximum of one entry)."
+          }
+        },
+        "required": ["institution", "location", "description", "graduated", "notes"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["personal_info", "skills", "work_history", "education_v2"],
+  "additionalProperties": false
+}
