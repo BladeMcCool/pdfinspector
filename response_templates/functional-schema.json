@@ -102,22 +102,14 @@
                 "daterange": {
                   "type": "string",
                   "description": "The date range during which the work was performed."
-                },
-                "hide": {
-                  "type": ["boolean","null"],
-                  "description": "Optional property to hide this Key Contributions entry."
                 }
               },
-              "required": ["headline", "body", "tech", "daterange", "hide"],
+              "required": ["headline", "body", "tech", "daterange"],
               "additionalProperties": false
             }
-          },
-          "hide": {
-            "type": ["boolean","null"],
-            "description": "Optional property to hide this Functional Areas entry."
           }
         },
-        "required": ["title", "key_contributions", "hide"],
+        "required": ["title", "key_contributions" ],
         "additionalProperties": false
       }
     },
@@ -141,13 +133,9 @@
           "daterange": {
             "type": "string",
             "description": "The date range during which the candidate worked at the company."
-          },
-          "hide": {
-            "type": ["boolean","null"],
-            "description": "Optional property to hide this Employment entry."
           }
         },
-        "required": ["title", "company", "location", "daterange", "hide"],
+        "required": ["title", "company", "location", "daterange"],
         "additionalProperties": false
       }
     }

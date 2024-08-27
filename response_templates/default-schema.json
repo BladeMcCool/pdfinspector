@@ -77,10 +77,6 @@
             "type": "string",
             "description": "A date used for sorting the work history entries."
           },
-          "hide": {
-            "type": ["boolean","null"],
-            "description": "Optional property to hide this Company entry."
-          },
           "projects": {
             "type": "array",
             "items": {
@@ -109,18 +105,14 @@
                 "jobtitle": {
                   "type": "string",
                   "description": "The job title held while working on the project."
-                },
-                "hide": {
-                  "type": ["boolean","null"],
-                  "description": "Optional property to hide this Project entry."
                 }
               },
-              "required": ["desc","sortdate","tech","github","location","jobtitle","hide"],
+              "required": ["desc","sortdate","tech","github","location","jobtitle"],
               "additionalProperties": false
             }
           }
         },
-        "required": ["company", "tag", "companydesc", "location", "jobtitle", "daterange", "sortdate", "hide", "projects"],
+        "required": ["company", "tag", "companydesc", "location", "jobtitle", "daterange", "sortdate", "projects"],
         "additionalProperties": false
       }
     },

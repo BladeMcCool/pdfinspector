@@ -38,8 +38,8 @@ func main() {
 	//this stuff that should probably be cli overridable at least, todo.
 	acceptable_ratio := 0.88
 	max_attempts := 7
-	layout := "functional"
-	//layout := "default"
+	//layout := "functional"
+	layout := "default"
 	outputDir := "output"
 
 	input, err := ReadInput(inputDir, layout)
