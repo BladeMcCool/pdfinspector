@@ -25,17 +25,17 @@
           "type": "string",
           "description": "The candidate's city and province/state."
         },
-        "profile": {
-          "type": "string",
-          "description": "A descriptive profile text for the candidate."
-        },
         "github": {
           "type": "string",
           "description": "The candidate's GitHub profile URL."
         }
       },
-      "required": ["name", "email", "phone", "linkedin","location","profile","github"],
+      "required": ["name", "email", "phone", "linkedin","location","github"],
       "additionalProperties": false
+    },
+    "overview": {
+      "type": "string",
+      "description": "A descriptive profile overview text for the candidate."
     },
     "education": {
       "type": "array",
@@ -84,13 +84,13 @@
             "items": {
               "type": "object",
               "properties": {
-                "headline": {
+                "lead_in": {
                   "type": "string",
-                  "description": "Description lead-in, typically bolded."
+                  "description": "Bolded introductory text that begins a sentence or key point."
                 },
-                "body": {
+                "continuation": {
                   "type": "string",
-                  "description": "The remainder of the description."
+                  "description": "Continuation of the sentence that follows the lead_in, forming a complete thought when combined."
                 },
                 "tech": {
                   "type": "array",
@@ -102,9 +102,13 @@
                 "daterange": {
                   "type": "string",
                   "description": "The date range during which the work was performed."
+                },
+                "company": {
+                  "type": "string",
+                  "description": "The company where the work was performed."
                 }
               },
-              "required": ["headline", "body", "tech", "daterange"],
+              "required": ["lead_in", "continuation", "tech", "daterange", "company"],
               "additionalProperties": false
             }
           }
@@ -140,6 +144,6 @@
       }
     }
   },
-  "required": ["personal_info", "education", "functional_areas", "employment_history"],
+  "required": ["personal_info", "overview", "education", "functional_areas", "employment_history"],
   "additionalProperties": false
 }

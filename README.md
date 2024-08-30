@@ -34,6 +34,7 @@ loop up to five times to get to a better resume under 1 page
         (something like this, need to tell it how to get the new json still, oh and is that host right? thats for a docker container not the local run)
         docker run --rm -p 80:80 -d --network my_network gotenberg/gotenberg:8 gotenberg --api-port=80 --api-timeout=10s --libreoffice-disable-routes --log-level=debug
         curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url=http://host.docker.internal:3000 -o ../pdfinspector/test2.pdf
+        curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url="http://host.docker.internal:3000?layout=functional" -o ../pdfinspector/functional-test.pdf
     cause a ghostscript png render of the pdf
         (that env stuff maybe not needed if we use go program to execute it - but we'll have to fill the pwd too)
         MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd):/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out2-%03d.png -r144 /workspace/test2.pdf
@@ -80,3 +81,36 @@ this whole deal might work better by breaking it down and adjusting the resume i
 - make a functional layout that can be toggled. see https://www.reddit.com/r/recruitinghell/comments/1eo69xv/the_resume_format_that_landed_me_interviews_for/
 
 ```
+strategy by Rahul
+https://www.linkedin.com/posts/rahulraj90_jobs-activity-7233370876136542209-8FqV?utm_source=share&utm_medium=member_desktop
+
+Applied to 200+ jobs.
+200 rejections. No interviews.
+Unfortunately, it's a story I hear often.
+
+It turns out they were only:
+-> Searching job boards and submitting them over and over.
+-> Sending generic messages to the wrong people (recruiters)
+-> Hoping and praying for an interview invitation
+
+That approach simply won't work. Especially in this competitive job market.
+It's like going fishing with a line but no hook on the end.
+You might get extremely lucky and have fish jump straight into the boat, but more likely than not, you’ll catch nothing.
+
+So, we need a different approach :
+
+👉 Clarify your target role, why you want it, and why you're a fit. For example, don't assume that an SDE 2 role is the same in every organization around the world. Similarly, don't choose backend, frontend, or DevOps roles just because there are more job postings—focus on your strengths instead.
+
+👉 Make sure you're well prepared. I've personally seen candidates who are desperate for jobs, but a good majority of them are not ready for interviews when a referral is offered.
+
+👉 Make sure to clearly articulate your "Why" and framing your skills and experience to align with your target role
+
+👉 Connect with people in your target role (this is key).
+
+👉 Engage with your contacts meaningfully—avoid just saying "Hi/Hello" or using LinkedIn automated messages, as these show little effort or respect for their time. Don’t rush in asking for referrals; instead, take time to appear genuine. Not everyone will respond, but some will, and you'll connect with the best-minded people, making it a win-win!
+
+👉Reach out to hiring managers for jobs you apply to, and remember they’re picky about resumes, so make yours stand out with unique achievements, not just solving 1000 Leetcode problems. Solving a Leetcode problem and tackling a real-world issue are very different. If a hiring manager refers you, consider it a jackpot!
+
+👉 Use specific, personalized messages when reaching out—keep them balanced, clear, and professional. Even if you don't secure a job, you’ll build a valuable connection. If there's no response, wait a day or two before following up, and avoid sending multiple messages.
+
+It sounds like a lot of effort, but if you shift the same energy spent applying to jobs to the above activities, you will see better results - more interviews, and more job offers.
