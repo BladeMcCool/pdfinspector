@@ -39,15 +39,26 @@ func main() {
 	//this stuff that should probably be cli overridable at least, todo.
 	acceptable_ratio := 0.88
 	max_attempts := 7
-	//layout := "functional"
-	layout := "default" //which is chronological.
+
+	//baseline := "functional"
+	baseline := "chrono"
+	//baseline := "resumeproject"
+	//baseline := "retailchrono"
 	outputDir := "output"
+
+	baselineJSON, err := getBaselineJSON(baseline)
+	if err != nil {
+		log.Fatalf("error from reading baseline JSON: %v", err)
+	}
+	layout, style, err := getLayoutFromBaselineJSON(baselineJSON)
+	if err != nil {
+		log.Fatalf("error from extracting layout from baseline JSON: %v", err)
+	}
 
 	input, err := ReadInput(inputDir, layout)
 	if err != nil {
 		log.Fatalf("Error reading input files: %v", err)
 	}
-	_ = input
 
 	jDmetaRawJSON, err := takeNotesOnJD(input, outputDir)
 	if err != nil {
@@ -61,19 +72,6 @@ func main() {
 		return
 	}
 	//panic("does it look right - before proceeding")
-
-	// get JSON of the current complete resume including all the hidden stuff, this hits an express server that imports the reactresume resumedata.mjs and outputs it as json.
-	resp, err := http.Get(fmt.Sprintf("http://localhost:3002?layout=%s", layout))
-	if err != nil {
-		log.Fatalf("Failed to make the HTTP request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalf("Failed to read the response body: %v", err)
-	}
-	log.Printf("got %d bytes of json from the json-server\n", len(body))
 
 	mainPrompt, err := getInputPrompt(inputDir, layout)
 	if err != nil {
@@ -99,7 +97,7 @@ func main() {
 		"\n--- end job description ---\n",
 		kwPrompt,
 		"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
-		string(body),
+		baselineJSON,
 	}
 	//prompt_parts = append([]string{inputPrompt}, prompt_parts...)
 
@@ -148,7 +146,7 @@ func main() {
 	}
 	messages := data["messages"].([]map[string]interface{}) //preserve orig
 
-	for i := range max_attempts {
+	for i := 0; i < max_attempts; i++ {
 		api_request_pretty, err := serializeToJSON(data)
 		writeToFile(api_request_pretty, i, "api_request_pretty", outputDir)
 		if err != nil {
@@ -185,25 +183,7 @@ func main() {
 		}
 		log.Printf("Got %d bytes of JSON content (at least well formed enough to be decodable) out of that last response\n", len(content))
 
-		// Step 5: Write the validated content to the filesystem in a way the resume projects json server can read it, plus locally for posterity.
-		// Assuming the file path is up and outside of the project directory
-		// Example: /home/user/output/validated_content.json
-		outputFilePath := filepath.Join("../ReactResume/resumedata/", fmt.Sprintf("attempt%d.json", i))
-		err = writeValidatedContent(content, outputFilePath)
-		if err != nil {
-			log.Printf("Error writing content to file: %v\n", err)
-			return
-		}
-		log.Println("Content successfully written to:", outputFilePath)
-
-		// Example: /home/user/output/validated_content.json
-		localOutfilePath := filepath.Join(outputDir, fmt.Sprintf("attempt%d.json", i))
-		err = writeValidatedContent(content, localOutfilePath)
-		if err != nil {
-			log.Printf("Error writing content to file: %v\n", err)
-			return
-		}
-		log.Println("Content successfully written to:", localOutfilePath)
+		err = writeAttemptResumedataJSON(content, layout, style, outputDir, i)
 
 		//we should be able to render that updated content proposal now via gotenberg + ghostscript
 		err = makePDFRequestAndSave(i, layout, outputDir)
@@ -211,7 +191,7 @@ func main() {
 			log.Printf("Error: %v\n", err)
 		}
 
-		//and the ghostscript dump to pngs ... one thing i need to do first tho is make my own ghostscript image i think b/c using a 'vuln' one out of laziness is probably horribly bad.
+		//and the ghostscript dump to pngs ...
 		// MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd)/output:/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out-%03d.png -r144 /workspace/attempt.pdf
 		err = dumpPDFToPNG(i, outputDir)
 		if err != nil {
@@ -242,14 +222,16 @@ func main() {
 				reduceByPct := int(((result.LastPageContentRatio / (1 + result.LastPageContentRatio)) * 100) / 2)
 				log.Printf("only one extra page .... reduce by %d%%", reduceByPct)
 				tryNewPrompt = true
-				tryPrompt = fmt.Sprintf("Too long, reduce by %d%%, by making minimal edits to the prior output as possible. Sometimes going overboard on skills makes it too long. Remember to make the candidate still look great in relation to the Job Description supplied earlier!", reduceByPct)
+				//tryPrompt = fmt.Sprintf("Too long, reduce by %d%%, by making minimal edits to the prior output as possible. Sometimes going overboard on skills makes it too long. Remember to make the candidate still look great in relation to the Job Description supplied earlier!", reduceByPct)
+				tryPrompt = fmt.Sprintf("Too long, reduce the total content length by %d%%, while still keeping the information highly relevant to the Job Description.", reduceByPct)
 			}
 		} else if result.NumberOfPages == 1 && result.LastPageContentRatio < acceptable_ratio {
 			log.Println("make it longer ...")
 			tryNewPrompt = true
 			//tryPrompt = fmt.Sprintf("Not long enough when rendered, was only %d%% of the page. Fill it up to between %d%% and 95%%. You can bulk up the content of existing project descriptions, add new projects within companies or by beefing up the skills list. Remember to make the candidate look even greater in relation to the Job Description supplied earlier!", int(result.LastPageContentRatio*100), int(acceptable_ratio*100))
 			increaseByPct := int((95.0 - result.LastPageContentRatio*100) / 2) //wat? idk smthin like this anyway.
-			tryPrompt = fmt.Sprintf("Not long enough, increase by %d%%, you can bulk up the content of existing project descriptions, add new projects within companies or by beefing up the skills list. Remember to make the candidate look even greater in relation to the Job Description supplied earlier!", increaseByPct)
+			//tryPrompt = fmt.Sprintf("Not long enough, increase by %d%%, you can bulk up the content of existing project descriptions, add new projects within companies or by beefing up the skills list. Remember to make the candidate look even greater in relation to the Job Description supplied earlier!", increaseByPct)
+			tryPrompt = fmt.Sprintf("Not long enough, increase the total content length by %d%%, while still keeping the information highly relevant to the Job Description.", increaseByPct)
 
 			//try to make it longer!!! - include the assistants last message in the new prompt so it can see what it did
 		} else if result.NumberOfPages == 1 && result.LastPageContentRatio >= acceptable_ratio {
@@ -318,6 +300,96 @@ func main() {
 	//fmt.Println("some test result output")
 	//fmt.Println(test6)
 
+}
+
+func writeAttemptResumedataJSON(content, layout, style, outputDir string, attemptNum int) error {
+	// Step 5: Write the validated content to the filesystem in a way the resume projects json server can read it, plus locally for posterity.
+	// Assuming the file path is up and outside of the project directory
+	// Example: /home/user/output/validated_content.json
+	outputFilePath := filepath.Join("../ResumeData/resumedata/", fmt.Sprintf("attempt%d.json", attemptNum))
+	updatedContent, err := insertLayout(content, layout, style)
+	if err != nil {
+		log.Printf("Error inserting layout info: %v\n", err)
+		return err
+	}
+	err = writeValidatedContent(updatedContent, outputFilePath)
+	if err != nil {
+		log.Printf("Error writing content to file: %v\n", err)
+		return err
+	}
+	log.Println("Content successfully written to:", outputFilePath)
+
+	// Example: /home/user/output/validated_content.json
+	localOutfilePath := filepath.Join(outputDir, fmt.Sprintf("attempt%d.json", attemptNum))
+	err = writeValidatedContent(updatedContent, localOutfilePath)
+	if err != nil {
+		log.Printf("Error writing content to file: %v\n", err)
+		return err
+	}
+	log.Println("Content successfully written to:", localOutfilePath)
+	return nil
+}
+
+func insertLayout(content string, layout string, style string) (string, error) {
+	// Step 1: Deserialize the JSON content into a map
+	var data map[string]interface{}
+	err := json.Unmarshal([]byte(content), &data)
+	if err != nil {
+		return "", err
+	}
+
+	// Step 2: Insert the layout into the map
+	data["layout"] = layout
+
+	if style != "" {
+		data["style"] = style
+	}
+
+	// Step 3: Reserialize the map back into a JSON string
+	updatedContent, err := json.Marshal(data)
+	if err != nil {
+		return "", err
+	}
+
+	// Step 4: Return the updated JSON string
+	return string(updatedContent), nil
+}
+
+func getBaselineJSON(baseline string) (string, error) {
+	// get JSON of the current complete resume including all the hidden stuff, this hits an express server that imports the reactresume resumedata.mjs and outputs it as json.
+	resp, err := http.Get(fmt.Sprintf("http://localhost:3002?baseline=%s", baseline))
+	if err != nil {
+		log.Fatalf("Failed to make the HTTP request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Failed to read the response body: %v", err)
+	}
+	log.Printf("got %d bytes of json from the json-server\n", len(body))
+	return string(body), nil
+}
+
+func getLayoutFromBaselineJSON(baselineJSON string) (string, string, error) {
+	//if i want anything else beyond layout and style i should return a struct because this is ugly.
+
+	//log.Println("dbg baselinejson", baselineJSON)
+	var decoded map[string]interface{}
+	err := json.Unmarshal([]byte(baselineJSON), &decoded)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Check if the "layout" key exists and is a string
+	layout, ok := decoded["layout"].(string)
+	if !ok {
+		return "", "", errors.New("layout is missing or not a string")
+	}
+	// Check if the "style" key exists and is a string (its ok if its not there but if it is we should keep it)
+	style, _ := decoded["style"].(string)
+
+	return layout, style, nil
 }
 
 type jdMeta struct {
@@ -482,7 +554,7 @@ func getDefaultPrompt(layout string) (string, error) {
 
 	//because the different layouts are going to be structured different i just want to refer to the sections by what they are, so slight nuance depending on the layout. annoying yes, and maybe not neccessary idk. perhaps a more unified way of talking about the work history could be done
 	m := map[string]string{
-		"default": strings.Join([]string{
+		"chrono": strings.Join([]string{
 			"The task is to examine a Job Description and a resume data structure with the goal of adjusting the data structure such that the final rendered resume presents the perfect candidate for the job while still keeping the final render to exactly one page. ",
 			//"Your output JSON can simply omit anything which need not be seen in the rendered resume document (If all of the projects within a job are marked as hidden then the whole job will be hidden). ",
 			//"The work_history contains a list of companies and projects within those companies. ",
@@ -792,6 +864,7 @@ func makeAPIRequest(apiBody interface{}, apiKey string, counter int, name, outpu
 	if err != nil {
 		return "", fmt.Errorf("failed to write response to file: %v", err)
 	}
+	log.Printf("Got response from OpenAI API ... (and should have wrote it to the file system)")
 
 	// Return the response string
 	return responseString, nil

@@ -35,6 +35,7 @@ loop up to five times to get to a better resume under 1 page
         docker run --rm -p 80:80 -d --network my_network gotenberg/gotenberg:8 gotenberg --api-port=80 --api-timeout=10s --libreoffice-disable-routes --log-level=debug
         curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url=http://host.docker.internal:3000 -o ../pdfinspector/test2.pdf
         curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url="http://host.docker.internal:3000?layout=functional" -o ../pdfinspector/functional-test.pdf
+        curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url="http://host.docker.internal:3000?layout=functional&resumedata=articulate" -o ./"Chris Hagglund Resume.pdf"
     cause a ghostscript png render of the pdf
         (that env stuff maybe not needed if we use go program to execute it - but we'll have to fill the pwd too)
         MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd):/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out2-%03d.png -r144 /workspace/test2.pdf
@@ -114,3 +115,14 @@ So, we need a different approach :
 👉 Use specific, personalized messages when reaching out—keep them balanced, clear, and professional. Even if you don't secure a job, you’ll build a valuable connection. If there's no response, wait a day or two before following up, and avoid sending multiple messages.
 
 It sounds like a lot of effort, but if you shift the same energy spent applying to jobs to the above activities, you will see better results - more interviews, and more job offers.
+
+----------
+for current job check:
+jam in:
+* Java (education notes, render them)
+* Kubernetes under Tmq stuff 
+correct email addr to the gmail one.
+cross functional somewhere in kraken stuff
+
+baseline checks:
+double-check that Redis is mentioned in baseline chrono and functional!
