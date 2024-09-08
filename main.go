@@ -2,10 +2,14 @@ package main
 
 import (
 	"bytes"
+	"cloud.google.com/go/storage"
+	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/disintegration/imaging"
+	"github.com/google/uuid"
 	"image"
 	_ "image/png" // Importing PNG support
 	"io"
@@ -15,38 +19,164 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"pdfinspector/filesystem"
 	"sort"
+	"strconv"
 	"strings"
 )
 
-//func main() {
-//	//
-//	// Open the PNG file
-//	img, err := imaging.Open("output/out-001.png")
-//	if err != nil {
-//		log.Fatalf("Failed to open image: %v", err)
-//	}
-//
-//	//_ = whitePct(img)
-//	_ = contentEnds(img)
-//}
+// Job represents the structure for a job
+type Job struct {
+	JobDescription string `json:"jd"`
+	Baseline       string `json:"baseline"`      //the actual layout to use is a property of the baseline resumedata.
+	BaselineJSON   string `json:"baseline_json"` //the actual layout to use is a property of the baseline resumedata.
+	CustomPrompt   string `json:"prompt"`
+	StyleOverride  string `json:"style_override"` //eg fluffy
+	Id             uuid.UUID
 
+	//anything else we want as options per-job? i was thinking include_bio might be a good option. (todo: ability to not show it on functional, ability to show it on chrono, and then json schema tuning depending on if it is set or not so that the gpt can know to specify it - and dont include it when it shouldn't!)
+}
+
+// JobResult represents a job result with its status and result data.
+type JobResult struct {
+	ID     int
+	Status string
+	Result string
+}
+
+// Global variables for job management
+var (
+	jobQueue = make(chan Job, 100) // Queue to hold jobs
+	//jobIDCounter = 1
+	//mu           sync.Mutex
+	fs filesystem.FileSystem // Filesystem interface to handle storage
+
+	//this stuff that should probably be cli overridable at least, todo.
+	acceptableRatio = 0.88
+	maxAttempts     = 7
+)
+
+// serviceConfig struct to hold the configuration values
+type serviceConfig struct {
+	gotenbergURL  string
+	jsonServerURL string
+	reactAppURL   string
+	fsType        string
+	mode          string
+	localPath     string
+	gcsBucket     string
+	openAiApiKey  string //oh noes the capitalization *hand waving* guess what? idgaf :) my way.
+}
+
+// main function: Either runs the web server or executes the main functionality.
 func main() {
+	// Get the service configuration
+	config := getServiceConfig()
+
+	//mode := parseFlags()
+	//log.Printf("mode: %s, fsType: %s", mode, fsType)
+	//panic("stop for now")
+
+	//gotenbergURL := getEnv("GOTENBERG_URL", "http://localhost:3000")
+	//jsonServerURL := getEnv("JSON_SERVER_URL", "http://localhost:4000")
+	//reactAppURL := getEnv("REACT_APP_URL", "http://localhost:5000")
+	//gcsBucket := getEnv("GCS_BUCKET", "my-stinky-bucket")
+
+	// Configure filesystem
+	localPath := flag.Lookup("local-path").Value.(flag.Getter).Get().(string)
+	_ = localPath
+	//gcsBucket := flag.Lookup("gcs-bucket").Value.(flag.Getter).Get().(string)
+	fs = configureFilesystem(config)
+
+	if config.mode == "cli" {
+		// CLI execution mode
+		fmt.Println("Running main functionality from CLI...")
+		oldMain(fs, config)
+		// Replace the following with your main functionality
+		fmt.Println("Finished Executing main functionality via CLI")
+		return
+	}
+
+	// Start worker
+	go worker(config)
+
+	// Web server mode
+	http.HandleFunc("/submitjob", handleJobSubmission)
+	http.HandleFunc("/checkjob/", handleJobStatus)
+
+	fmt.Println("Starting server on port 8080...")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatalf("Server failed: %v", err)
+	}
+}
+
+// Helper function to get value from CLI args, env vars, or default
+func getConfig(cliValue *string, envVar string, defaultValue string) string {
+	if *cliValue != "" {
+		return *cliValue
+	}
+	if value, exists := os.LookupEnv(envVar); exists {
+		return value
+	}
+	return defaultValue
+}
+
+// getServiceConfig function to return a pointer to serviceConfig
+func getServiceConfig() *serviceConfig {
+	// Define CLI flags
+	gotenbergURL := flag.String("gotenberg-url", "", "URL for Gotenberg service")
+	jsonServerURL := flag.String("json-server-url", "", "URL for JSON server")
+	reactAppURL := flag.String("react-app-url", "", "URL for React app")
+	gcsBucket := flag.String("gcs-bucket", "", "File system type (local or gcs)")
+	openAiApiKey := flag.String("api-key", "", "OpenAI API Key")
+	localPath := flag.String("local-path", "", "Mode of the application (server or cli)")
+	fstype := flag.String("fstype", "", "File system type (local or gcs)")
+	mode := flag.String("mode", "", "Mode of the application (server or cli)")
+
+	// Parse CLI flags
+	flag.Parse()
+
+	// Populate the serviceConfig struct
+	config := &serviceConfig{
+		gotenbergURL:  getConfig(gotenbergURL, "GOTENBERG_URL", "http://localhost:3000"),
+		jsonServerURL: getConfig(jsonServerURL, "JSON_SERVER_URL", "http://localhost:3002"),
+		reactAppURL:   getConfig(reactAppURL, "REACT_APP_URL", "http://localhost:5000"),
+		openAiApiKey:  getConfig(openAiApiKey, "OPENAI_API_KEY", ""),
+		fsType:        getConfig(fstype, "FSTYPE", "gcs"),
+		gcsBucket:     getConfig(gcsBucket, "GCS_BUCKET", "my-stinky-bucket"),
+		localPath:     getConfig(localPath, "LOCAL_PATH", "output"),
+		mode:          getConfig(mode, "MODE", "server"), // Default to "server"
+	}
+
+	//Validation
+	if config.fsType == "gcs" && config.gcsBucket == "" {
+		log.Fatal("GCS bucket name must be specified for GCS filesystem")
+	}
+
+	if config.fsType == "local" && config.localPath == "" {
+		log.Fatal("Local path must be specified for local filesystem")
+	}
+	if config.openAiApiKey == "" {
+		log.Fatal("An Open AI (what a misnomer lol) API Key is required for the server to be able to do anything interesting.")
+	}
+
+	return config
+}
+
+func oldMain(fs filesystem.FileSystem, config *serviceConfig) {
 
 	// Example call to ReadInput
 	inputDir := "input" // The directory where jd.txt and expect_response.json are located
-
-	//this stuff that should probably be cli overridable at least, todo.
-	acceptable_ratio := 0.88
-	max_attempts := 7
 
 	//baseline := "functional"
 	baseline := "chrono"
 	//baseline := "resumeproject"
 	//baseline := "retailchrono"
 	outputDir := "output"
+	styleOverride := "fluffy"
+	//styleOverride := ""
 
-	baselineJSON, err := getBaselineJSON(baseline)
+	baselineJSON, err := getBaselineJSON(baseline, config)
 	if err != nil {
 		log.Fatalf("error from reading baseline JSON: %v", err)
 	}
@@ -54,26 +184,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("error from extracting layout from baseline JSON: %v", err)
 	}
+	if styleOverride != "" {
+		style = styleOverride
+	}
 
-	input, err := ReadInput(inputDir, layout)
+	input, err := ReadInput(inputDir)
 	if err != nil {
 		log.Fatalf("Error reading input files: %v", err)
 	}
 
-	jDmetaRawJSON, err := takeNotesOnJD(input, outputDir)
+	input.ExpectResponseSchema, err = getExpectedResponseJsonSchema(layout)
 	if err != nil {
-		log.Println("error taking notes on JD: ", err)
+		log.Println("error from getExpectedResponseJsonSchema: ", err)
 		return
 	}
-	jDMetaDecoded := &jdMeta{}
-	err = json.Unmarshal([]byte(jDmetaRawJSON), jDMetaDecoded)
-	if err != nil {
-		log.Println("error extracting notes on JD: ", err)
-		return
-	}
-	//panic("does it look right - before proceeding")
 
-	mainPrompt, err := getInputPrompt(inputDir, layout)
+	mainPrompt, err := getInputPrompt(inputDir)
 	if err != nil {
 		log.Println("error from reading input prompt: ", err)
 		return
@@ -86,238 +212,199 @@ func main() {
 		}
 	}
 
-	kwPrompt := ""
-	if len(jDMetaDecoded.Keywords) > 0 {
-		kwPrompt = "The adjusted resume data should contain as many of the following keywords as is reasonable/possible: " + strings.Join(jDMetaDecoded.Keywords, ", ") + "\n"
-	}
-	prompt_parts := []string{
-		mainPrompt,
-		"\n--- start job description ---\n",
-		input.JD,
-		"\n--- end job description ---\n",
-		kwPrompt,
-		"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
-		baselineJSON,
-	}
-	//prompt_parts = append([]string{inputPrompt}, prompt_parts...)
-
-	prompt := strings.Join(prompt_parts, "")
-	//log.Printf("prompto:\n\n%s", prompt)
-
-	//// Serialize the map to JSON
-	//jsonData, err := json.MarshalIndent(data, "", "  ")
-	//if err != nil {
-	//	log.Fatalf("Failed to marshal JSON: %v", err)
-	//}
-
-	// Create a map to represent the API request structure
-	data := map[string]interface{}{
-		"model": "gpt-4o-mini",
-		"messages": []map[string]interface{}{
-			{
-				"role": "system",
-				//"content": fmt.Sprintf("You are a helpful resume tuning person (not a bot or an AI). The response should include only the fields expected to be rendered by the application, in well-formed JSON, without any triple quoting, such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom.", int(acceptable_ratio*100)),
-				//"content": fmt.Sprintf("You are a helpful resume tuning assistant. The response should include resume content such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom. The output must respect the supplied JSON schema including having some value for fields identified as required in the schema", int(acceptable_ratio*100)),
-				"content": fmt.Sprintf("You are a helpful resume tuning assistant. The response should include resume content such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom.", int(acceptable_ratio*100)),
-			},
-			//{
-			//	"role":    "user",
-			//	"content": "Show me an example input for the resume system to ingest",
-			//},
-			//{
-			//	"role":    "assistant",
-			//	"content": input.ExpectResponse,
-			//},
-			{
-				"role":    "user",
-				"content": prompt,
-			},
-		},
-		"response_format": map[string]interface{}{
-			"type": "json_schema",
-			"json_schema": map[string]interface{}{
-				"name":   "candidate_resume",
-				"strict": true,
-				"schema": input.ExpectResponseSchema,
-			},
-		},
-		//"max_tokens":  2000, //idk i had legit response go over 2000 because it was wordy. not sure that bug where it generated full stream of garbage happened again after putting on 'strict' tho. keep an eye on things.
-		"temperature": 0.7,
-	}
-	messages := data["messages"].([]map[string]interface{}) //preserve orig
-
-	for i := 0; i < max_attempts; i++ {
-		api_request_pretty, err := serializeToJSON(data)
-		writeToFile(api_request_pretty, i, "api_request_pretty", outputDir)
-		if err != nil {
-			log.Fatalf("Failed to marshal final JSON: %v", err)
-		}
-		exists, output, err := checkForPreexistingAPIOutput(outputDir, "api_response_raw", i)
-		if err != nil {
-			log.Fatalf("Error checking for pre-existing API output: %v", err)
-		}
-		if !exists {
-			output, err = makeAPIRequest(data, input.APIKey, i, "api_response_raw", outputDir)
-		}
-
-		//openai api should have responded to our request with a json text that can be used as resumedata input. extract it.
-		var apiResponse APIResponse
-		err = json.Unmarshal([]byte(output), &apiResponse)
-		if err != nil {
-			fmt.Printf("Error deserializing API response: %v\n", err)
-			return
-		}
-
-		//Extract the message content
-		if len(apiResponse.Choices) == 0 {
-			fmt.Println("No choices found in the API response")
-			return
-		}
-
-		content := apiResponse.Choices[0].Message.Content
-
-		err = validateJSON(content)
-		if err != nil {
-			fmt.Printf("Error validating JSON content: %v\n", err)
-			return
-		}
-		log.Printf("Got %d bytes of JSON content (at least well formed enough to be decodable) out of that last response\n", len(content))
-
-		err = writeAttemptResumedataJSON(content, layout, style, outputDir, i)
-
-		//we should be able to render that updated content proposal now via gotenberg + ghostscript
-		err = makePDFRequestAndSave(i, layout, outputDir)
-		if err != nil {
-			log.Printf("Error: %v\n", err)
-		}
-
-		//and the ghostscript dump to pngs ...
-		// MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd)/output:/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out-%03d.png -r144 /workspace/attempt.pdf
-		err = dumpPDFToPNG(i, outputDir)
-		if err != nil {
-			log.Printf("Error during pdf to image dump: %v\n", err)
-			break
-		}
-
-		result, err := inspectPNGFiles(outputDir, i)
-		if err != nil {
-			log.Printf("Error inspecting png files: %v\n", err)
-			break
-		}
-
-		log.Printf("inspect result: %#v", result)
-		if result.NumberOfPages == 0 {
-			log.Printf("no pages, idk just stop")
-			break
-		}
-
-		tryNewPrompt := false
-		var tryPrompt string
-		if result.NumberOfPages > 1 {
-			if result.NumberOfPages > 2 {
-				log.Println("too many pages , this could be interesting but stop for now")
-				tryNewPrompt = true
-				tryPrompt = fmt.Sprintf("That was way too long, reduce the amount of content to try to get it down to one full page by summarizing or removing some existing project descriptions, removing projects within companies or by shortening up the skills list. Remember to make the candidate still look great in relation to the Job Description supplied earlier!")
-			} else {
-				reduceByPct := int(((result.LastPageContentRatio / (1 + result.LastPageContentRatio)) * 100) / 2)
-				log.Printf("only one extra page .... reduce by %d%%", reduceByPct)
-				tryNewPrompt = true
-				//tryPrompt = fmt.Sprintf("Too long, reduce by %d%%, by making minimal edits to the prior output as possible. Sometimes going overboard on skills makes it too long. Remember to make the candidate still look great in relation to the Job Description supplied earlier!", reduceByPct)
-				tryPrompt = fmt.Sprintf("Too long, reduce the total content length by %d%%, while still keeping the information highly relevant to the Job Description.", reduceByPct)
-			}
-		} else if result.NumberOfPages == 1 && result.LastPageContentRatio < acceptable_ratio {
-			log.Println("make it longer ...")
-			tryNewPrompt = true
-			//tryPrompt = fmt.Sprintf("Not long enough when rendered, was only %d%% of the page. Fill it up to between %d%% and 95%%. You can bulk up the content of existing project descriptions, add new projects within companies or by beefing up the skills list. Remember to make the candidate look even greater in relation to the Job Description supplied earlier!", int(result.LastPageContentRatio*100), int(acceptable_ratio*100))
-			increaseByPct := int((95.0 - result.LastPageContentRatio*100) / 2) //wat? idk smthin like this anyway.
-			//tryPrompt = fmt.Sprintf("Not long enough, increase by %d%%, you can bulk up the content of existing project descriptions, add new projects within companies or by beefing up the skills list. Remember to make the candidate look even greater in relation to the Job Description supplied earlier!", increaseByPct)
-			tryPrompt = fmt.Sprintf("Not long enough, increase the total content length by %d%%, while still keeping the information highly relevant to the Job Description.", increaseByPct)
-
-			//try to make it longer!!! - include the assistants last message in the new prompt so it can see what it did
-		} else if result.NumberOfPages == 1 && result.LastPageContentRatio >= acceptable_ratio {
-			log.Printf("over %d%% and still on one page? nice. we should stop (determined complete after attempt index %d).\n", int(acceptable_ratio*100), i)
-			break
-		}
-		log.Printf("will try new prompt: %s", tryPrompt)
-		if tryNewPrompt {
-			//not sure what the best approach is, to only send the assistants last response and the new prompt,
-			data["messages"] = append(messages, []map[string]interface{}{
-				{
-					"role":    "assistant",
-					"content": content,
-				}, {
-					"role":    "user",
-					"content": tryPrompt,
-				},
-			}...)
-
-			//or to keep stacking them...
-			//messages = append(messages, []map[string]interface{}{
-			//	{
-			//		"role":    "assistant",
-			//		"content": content,
-			//	}, {
-			//		"role":    "user",
-			//		"content": tryPrompt,
-			//	},
-			//}...)
-			//data["messages"] = messages
-		}
-		//messages = append(messages, )
-		////and prompt for a length adjustment as required. this is going to be experimental for a bit i think.
-		//messages = append(messages, map[string]interface{})
-		//data["messages"] = messages
-
-		//fmt.Println(content)
-		//break
-		_ = i
-		_ = output
-	}
-
-	// Step 6: Marshal the request body into JSON
-	finalJSON, err := json.Marshal(data)
+	//todo: fix this calls arguments it should probably just be one struct.
+	err = tuneResumeContents(input, mainPrompt, baselineJSON, layout, style, outputDir, acceptableRatio, maxAttempts, fs, config)
 	if err != nil {
-		log.Fatalf("Failed to marshal final JSON: %v", err)
+		log.Fatalf("Error from resume tuning: %v", err)
 	}
-
-	// Print the final JSON request body
-	fmt.Println(string(finalJSON))
-
-	//fmt.Println("example possible output:")
-	//fmt.Println(input.ExpectResponse)
-
-	//test1 := "{\n    \"personal_info\": {\n        \"name\": \"Chris A. Hagglund\",\n        \"email\": \"chris@chws.ca\",\n        \"phone\": \"250-532-9694\",\n        \"linkedin\": \"linkedin.com/in/1337-chris-hagglund\",\n        \"location\": \"Lethbridge AB\",\n        \"profile\": \"Software Engineer specializing in blockchain technology and data management\",\n        \"github\": \"https://github.com/BladeMcCool\"\n    },\n    \"key_skills\": [\n        \"Expert in Python and SQL for data-intensive environments; adept at data extraction and organization from blockchain sources.\",\n        \"Strong software engineering principles with a focus on code readability, testing, and API development.\",\n        \"Proficient in backend development with Go, Python, and Rust, particularly in cryptocurrency applications.\",\n        \"Experience with Docker, Kubernetes, and CI/CD pipelines to ensure efficient deployment and maintenance.\",\n        \"Familiar with blockchain technology and eager to explore decentralized solutions.\"\n    ],\n    \"work_history\": [\n        {\n            \"company\": \"Kraken\",\n            \"tag\": \"krk\",\n            \"companydesc\": \"Digital Asset Exchange\",\n            \"location\": \"Remote\",\n            \"jobtitle\": \"Software Engineer II\",\n            \"daterange\": \"Jan 2022 - Mar 2024\",\n            \"sortdate\": \"2024-03-11\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed and maintained a crucial API for aggregating blockchain transaction data, ensuring data integrity and adherence to SLAs while enhancing performance.\",\n                    \"sortdate\": \"2023-06-01\",\n                    \"tech\": \"Go, Docker, APIs\"\n                },\n                {\n                    \"desc\": \"Created a custom Terraform provider for syncing resources with blockchain services, facilitating critical operations for institutional clients.\",\n                    \"sortdate\": \"2022-01-24\",\n                    \"tech\": \"Terraform, Go, APIs\"\n                },\n                {\n                    \"desc\": \"Implemented a comprehensive data extraction process for public blockchain sources, enabling efficient analysis and reporting.\",\n                    \"sortdate\": \"2023-01-01\",\n                    \"tech\": \"Go, Docker, SQL\"\n                }\n            ]\n        },\n        {\n            \"company\": \"CHWS\",\n            \"tag\": \"chws\",\n            \"companydesc\": \"Software Development Consultancy\",\n            \"location\": \"Lethbridge, AB\",\n            \"jobtitle\": \"Senior Software Developer\",\n            \"daterange\": \"2010 - Present\",\n            \"sortdate\": \"2011-01-01\",\n            \"projects\": [\n                {\n                    \"desc\": \"Led the development of decentralized applications utilizing blockchain technology, including a Bitcoin Lightning Network donation system and a hosted Bitcoin wallet.\",\n                    \"sortdate\": \"2012-01-01\",\n                    \"tech\": \"Go, Python, JavaScript, Docker, IPFS\"\n                }\n            ]\n        }\n    ],\n    \"education_v2\": [\n        {\n            \"institution\": \"Humber College\",\n            \"location\": \"Toronto, ON\",\n            \"description\": \"3 year Computer Programmer/Analyst Diploma\",\n            \"graduated\": \"May 2002\",\n            \"notes\": [\n                \"Graduated with honors\"\n            ]\n        }\n    ],\n    \"skills\": [\n        \"Extensive experience with Python and SQL in data-heavy environments, particularly for blockchain data.\",\n        \"Strong problem-solving abilities with an emphasis on data integrity and performance optimization.\",\n        \"Self-motivated and organized, with a passion for decentralized technology and innovation.\"\n    ]\n}"
-
-	//test2 and 3 below were defective probably due to using the prior output as input in the resume! oops (it was eating its own tail)
-	//test2 := "{\n    \"personal_info\": {\n        \"name\": \"Chris A. Hagglund\",\n        \"email\": \"chris@chws.ca\",\n        \"phone\": \"250-532-9694\",\n        \"linkedin\": \"linkedin.com/in/1337-chris-hagglund\",\n        \"location\": \"Lethbridge AB\",\n        \"profile\": \"Dedicated Software Engineer specializing in blockchain technology and data management, with a passion for decentralized solutions and a commitment to enhancing data integrity across platforms.\",\n        \"github\": \"https://github.com/BladeMcCool\"\n    },\n    \"key_skills\": [\n        \"Expert in Python and SQL for data-intensive environments; adept at data extraction and organization from blockchain sources, ensuring data accuracy and reliability.\",\n        \"Strong software engineering principles with a focus on code readability, testing, and API development to support scalable solutions.\",\n        \"Proficient in backend development with Go, Python, and Rust, particularly in cryptocurrency applications that optimize transaction flow and data management.\",\n        \"Experience with Docker, Kubernetes, and CI/CD pipelines to ensure efficient deployment and maintenance of applications, enhancing operational workflows.\",\n        \"Familiar with blockchain technology, eager to explore decentralized solutions and contribute to innovative projects within the crypto space.\"\n    ],\n    \"work_history\": [\n        {\n            \"company\": \"Kraken\",\n            \"tag\": \"krk\",\n            \"companydesc\": \"Digital Asset Exchange\",\n            \"location\": \"Remote\",\n            \"jobtitle\": \"Software Engineer II\",\n            \"daterange\": \"Jan 2022 - Mar 2024\",\n            \"sortdate\": \"2024-03-11\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed and maintained a crucial API for aggregating blockchain transaction data, ensuring data integrity and adherence to SLAs while enhancing performance for institutional clients.\",\n                    \"sortdate\": \"2023-06-01\",\n                    \"tech\": \"Go, Docker, APIs\"\n                },\n                {\n                    \"desc\": \"Created a custom Terraform provider for syncing resources with blockchain services, facilitating critical operations for institutional clients and boosting transactional efficiency.\",\n                    \"sortdate\": \"2022-01-24\",\n                    \"tech\": \"Terraform, Go, APIs\"\n                },\n                {\n                    \"desc\": \"Implemented a comprehensive data extraction process for public blockchain sources, enabling efficient analysis and reporting, and significantly improving data accessibility for downstream applications.\",\n                    \"sortdate\": \"2023-01-01\",\n                    \"tech\": \"Go, Docker, SQL\"\n                }\n            ]\n        },\n        {\n            \"company\": \"CHWS\",\n            \"tag\": \"chws\",\n            \"companydesc\": \"Software Development Consultancy\",\n            \"location\": \"Lethbridge, AB\",\n            \"jobtitle\": \"Senior Software Developer\",\n            \"daterange\": \"2010 - Present\",\n            \"sortdate\": \"2011-01-01\",\n            \"projects\": [\n                {\n                    \"desc\": \"Led the development of decentralized applications utilizing blockchain technology, including a Bitcoin Lightning Network donation system and a hosted Bitcoin wallet, contributing to significant advancements in peer-to-peer transactions.\",\n                    \"sortdate\": \"2012-01-01\",\n                    \"tech\": \"Go, Python, JavaScript, Docker, IPFS\"\n                },\n                {\n                    \"desc\": \"Designed and implemented innovative solutions for data management and extraction in various projects, enhancing data flows and user experiences across applications.\",\n                    \"sortdate\": \"2015-01-01\",\n                    \"tech\": \"Python, SQL, AWS\"\n                }\n            ]\n        }\n    ],\n    \"education_v2\": [\n        {\n            \"institution\": \"Humber College\",\n            \"location\": \"Toronto, ON\",\n            \"description\": \"3 year Computer Programmer/Analyst Diploma\",\n            \"graduated\": \"May 2002\",\n            \"notes\": [\n                \"Graduated with honors, demonstrating a strong foundation in software development principles and practices.\"\n            ]\n        }\n    ],\n    \"skills\": [\n        \"Extensive experience with Python and SQL in data-heavy environments, particularly for blockchain data management and analysis.\",\n        \"Strong problem-solving abilities with an emphasis on data integrity and performance optimization in software applications.\",\n        \"Self-motivated and organized, with a passion for decentralized technology and innovation, committed to driving advancements in the cryptocurrency industry.\"\n    ]\n}"
-	//test3 := "{\n    \"personal_info\": {\n        \"name\": \"Chris A. Hagglund\",\n        \"email\": \"chris@chws.ca\",\n        \"phone\": \"250-532-9694\",\n        \"linkedin\": \"linkedin.com/in/1337-chris-hagglund\",\n        \"location\": \"Lethbridge AB\",\n        \"profile\": \"Dedicated Software Engineer specializing in blockchain technology and data management, passionate about decentralized solutions and committed to enhancing data integrity across platforms.\",\n        \"github\": \"https://github.com/BladeMcCool\"\n    },\n    \"key_skills\": [\n        \"Expert in Python and SQL for data-intensive environments; adept at data extraction and organization from blockchain sources, ensuring data accuracy and reliability.\",\n        \"Strong software engineering principles with a focus on code readability, testing, and API development to support scalable solutions.\",\n        \"Proficient in backend development with Go, Python, and Rust, particularly in cryptocurrency applications that optimize transaction flow and data management.\",\n        \"Experience with Docker, Kubernetes, and CI/CD pipelines to ensure efficient deployment and maintenance of applications, enhancing operational workflows.\",\n        \"Familiar with blockchain technology, eager to explore decentralized solutions and contribute to innovative projects within the crypto space.\",\n        \"Strong problem-solving skills with a proven ability to track down public source code and identify necessary data sources for analysis.\"\n    ],\n    \"work_history\": [\n        {\n            \"company\": \"Kraken\",\n            \"tag\": \"krk\",\n            \"companydesc\": \"Digital Asset Exchange\",\n            \"location\": \"Remote\",\n            \"jobtitle\": \"Software Engineer II\",\n            \"daterange\": \"Jan 2022 - Mar 2024\",\n            \"sortdate\": \"2024-03-11\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed and maintained a crucial API for aggregating blockchain transaction data, ensuring data integrity and adherence to SLAs while enhancing performance. This involved collaborating with cross-functional teams to refine data collection processes and improve overall service delivery for institutional clients.\",\n                    \"sortdate\": \"2023-06-01\",\n                    \"tech\": \"Go, Docker, APIs\"\n                },\n                {\n                    \"desc\": \"Created a custom Terraform provider for syncing resources with blockchain services, facilitating critical operations for institutional clients and boosting transactional efficiency. This project significantly streamlined resource management and improved compliance with internal policies.\",\n                    \"sortdate\": \"2022-01-24\",\n                    \"tech\": \"Terraform, Go, APIs\"\n                },\n                {\n                    \"desc\": \"Implemented a comprehensive data extraction process for public blockchain sources, enabling efficient analysis and reporting, and significantly improving data accessibility for downstream applications. This included documentation of extraction methodologies for future reference and training.\",\n                    \"sortdate\": \"2023-01-01\",\n                    \"tech\": \"Go, Docker, SQL\"\n                }\n            ]\n        },\n        {\n            \"company\": \"CHWS\",\n            \"tag\": \"chws\",\n            \"companydesc\": \"Software Development Consultancy\",\n            \"location\": \"Lethbridge, AB\",\n            \"jobtitle\": \"Senior Software Developer\",\n            \"daterange\": \"2010 - Present\",\n            \"sortdate\": \"2011-01-01\",\n            \"projects\": [\n                {\n                    \"desc\": \"Led the development of decentralized applications utilizing blockchain technology, including a Bitcoin Lightning Network donation system and a hosted Bitcoin wallet. These projects not only showcased my technical expertise but also contributed to significant advancements in peer-to-peer transactions, emphasizing security and user experience.\",\n                    \"sortdate\": \"2012-01-01\",\n                    \"tech\": \"Go, Python, JavaScript, Docker, IPFS\"\n                },\n                {\n                    \"desc\": \"Designed and implemented innovative solutions for data management and extraction in various projects, enhancing data flows and user experiences across applications. My work involved optimizing SQL queries for performance and ensuring that data pipelines were both robust and scalable.\",\n                    \"sortdate\": \"2015-01-01\",\n                    \"tech\": \"Python, SQL, AWS\"\n                }\n            ]\n        }\n    ],\n    \"education_v2\": [\n        {\n            \"institution\": \"Humber College\",\n            \"location\": \"Toronto, ON\",\n            \"description\": \"3 year Computer Programmer/Analyst Diploma\",\n            \"graduated\": \"May 2002\",\n            \"notes\": [\n                \"Graduated with honors, demonstrating a strong foundation in software development principles and practices.\"\n            ]\n        }\n    ],\n    \"skills\": [\n        \"Extensive experience with Python and SQL in data-heavy environments, particularly for blockchain data management and analysis.\",\n        \"Strong problem-solving abilities with an emphasis on data integrity and performance optimization in software applications.\",\n        \"Self-motivated and organized, with a passion for decentralized technology and innovation, committed to driving advancements in the cryptocurrency industry.\",\n        \"Effective communicator with the ability to collaborate with cross-functional teams, ensuring project alignment with organizational goals.\",\n        \"Adept at tracking blockchain data trends and capable of identifying necessary data sources for comprehensive analysis.\"\n    ]\n}"
-
-	//that was a better result with an adjusted prompt that said make sure to have 3-5 companies etc
-	//test4 := "{\n    \"personal_info\": {\n        \"name\": \"Chris A. Hagglund\",\n        \"email\": \"chris@chws.ca\",\n        \"phone\": \"250-532-9694\",\n        \"linkedin\": \"linkedin.com/in/1337-chris-hagglund\",\n        \"location\": \"Lethbridge AB\",\n        \"profile\": \"Software Engineer with a passion for blockchain technology\",\n        \"github\": \"https://github.com/BladeMcCool\"\n    },\n    \"key_skills\": [\n        \"Proficient in Python and SQL in data-intensive environments\",\n        \"Strong software engineering principles including code readability and testing\",\n        \"Expertise in aggregating and analyzing data from multiple sources including blockchains\",\n        \"Familiar with Docker, Kubernetes, and modern tech stacks including Golang, Airflow, and SQLAlchemy\",\n        \"Experienced in developing and maintaining APIs for data management and integration\"\n    ],\n    \"work_history\": [\n        {\n            \"company\": \"Kraken\",\n            \"tag\": \"krk\",\n            \"companydesc\": \"Digital Asset Exchange\",\n            \"location\": \"Remote\",\n            \"jobtitle\": \"Software Engineer II\",\n            \"daterange\": \"Jan 2022 - Mar 2024\",\n            \"sortdate\": \"2024-03-11\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed and maintained a custom Terraform provider to sync resources with a third-party accounting service via web API, facilitating seamless data flow for key business segments.\",\n                    \"sortdate\": \"2022-01-24\",\n                    \"tech\": \"Terraform, Go, APIs\"\n                },\n                {\n                    \"desc\": \"Oversaw enhancements to a crucial internal tool in Go that interacts with Nomad and GitLab APIs, significantly improving deployment accuracy and integrating monitoring metrics.\",\n                    \"sortdate\": \"2022-06-01\",\n                    \"tech\": \"Go, Docker, Nomad, Prometheus\"\n                },\n                {\n                    \"desc\": \"Unified testing frameworks across multiple repositories, creating a consistent CI pipeline with Docker Compose to enhance test reliability and efficiency.\",\n                    \"sortdate\": \"2023-06-01\",\n                    \"tech\": \"Bash scripting, Docker, CI pipelines\"\n                }\n            ]\n        },\n        {\n            \"company\": \"CHWS\",\n            \"tag\": \"chws\",\n            \"companydesc\": \"Software Development Consultancy\",\n            \"location\": \"Lethbridge, AB\",\n            \"jobtitle\": \"Senior Software Developer\",\n            \"daterange\": \"2010 - Present\",\n            \"sortdate\": \"2011-01-01\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed innovative blockchain-based solutions, including a decentralized social network and Bitcoin Lightning Network integrations, demonstrating a deep understanding of cryptocurrency technologies.\",\n                    \"sortdate\": \"2019-04-27\",\n                    \"tech\": \"Go, Nginx, JavaScript, HTML5, LND\"\n                },\n                {\n                    \"desc\": \"Created a proof-of-concept for a censorship-resistant social media platform utilizing IPFS and blockchain data structures, showcasing expertise in decentralized technologies.\",\n                    \"sortdate\": \"2021-03-15\",\n                    \"tech\": \"Go, IPFS, Docker\"\n                }\n            ]\n        },\n        {\n            \"company\": \"PerfectServe/Telmediq\",\n            \"tag\": \"tmq\",\n            \"companydesc\": \"Clinical Communication and Collaboration\",\n            \"location\": \"Victoria, BC\",\n            \"jobtitle\": \"Software Engineer\",\n            \"daterange\": \"Oct 2019 - Nov 2021\",\n            \"sortdate\": \"2021-08-15\",\n            \"projects\": [\n                {\n                    \"desc\": \"Engineered a robust interactive SMS-based survey microservice using Django/Python and Twilio, significantly improving patient follow-up processes and data collection.\",\n                    \"tech\": \"Django/Python, Twilio, Kubernetes\"\n                }\n            ]\n        },\n        {\n            \"company\": \"Go2mobi\",\n            \"tag\": \"go2\",\n            \"companydesc\": \"Mobile Advertising Self-Serve DSP\",\n            \"location\": \"Victoria, BC\",\n            \"jobtitle\": \"Senior Software Developer\",\n            \"daterange\": \"Nov 2012 - Feb 2017\",\n            \"sortdate\": \"2017-02-01\",\n            \"projects\": [\n                {\n                    \"desc\": \"Built a high-performance Real Time Bidder in Go, processing over 500,000 queries per second, demonstrating ability to handle large-scale data operations.\",\n                    \"tech\": \"Go, Python, AWS, RabbitMQ\"\n                }\n            ]\n        }\n    ],\n    \"education_v2\": [\n        {\n            \"institution\": \"Humber College\",\n            \"location\": \"Toronto, ON\",\n            \"description\": \"3 year Computer Programmer/Analyst Diploma\",\n            \"graduated\": \"May 2002\",\n            \"notes\": [\n                \"Graduated with honors\"\n            ]\n        }\n    ],\n    \"skills\": [\n        \"Data extraction and organization from various blockchains\",\n        \"Developing reliable APIs to ensure data integrity\",\n        \"Strong analytical skills with a focus on data-driven decision making\",\n        \"Self-motivated, organized, and effective communicator\"\n    ]\n}"
-
-	//test5 := "{\n    \"personal_info\": {\n        \"name\": \"Chris A. Hagglund\",\n        \"email\": \"chris@chws.ca\",\n        \"phone\": \"250-532-9694\",\n        \"linkedin\": \"linkedin.com/in/1337-chris-hagglund\",\n        \"location\": \"Lethbridge AB\",\n        \"profile\": \"Software Engineer\",\n        \"github\": \"https://github.com/BladeMcCool\"\n    },\n    \"key_skills\": [\n        \"Analyzing and solving complex problems; Proficient in self-directed learning; Adaptable to new languages, tools and frameworks; Experienced in both back-end and front-end development environments\",\n        \"Developing backend solutions, integrations and microservices; With Go, Python, Rust and Node.js\",\n        \"Building and supporting web apps; With HTML5, Javascript/ES6, React, REST, SCSS\",\n        \"Handling data; With Postgres, MySQL, Redis, AMQP and others\",\n        \"Working with a variety of tools; Experienced with Docker, AWS, Kubernetes, JetBrains IDEs, CI systems and more\"\n    ],\n    \"work_history\": [\n        {\n            \"company\": \"Kraken\",\n            \"tag\": \"krk\",\n            \"companydesc\": \"Digital Asset Exchange\",\n            \"location\": \"Remote\",\n            \"jobtitle\": \"Software Engineer II\",\n            \"daterange\": \"Jan 2022 - Mar 2024\",\n            \"sortdate\": \"2024-03-11\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed a custom Terraform provider to sync resources with a 3rd party accounting service via their web API, facilitating the launch of key business segments.\",\n                    \"sortdate\": \"2022-01-24\",\n                    \"tech\": \"Terraform, Go, APIs\"\n                },\n                {\n                    \"desc\": \"Unified isolated testing frameworks in Bash and Rust across 13 repositories encompassing the entire core backend web service, creating a consistent Gitlab CI pipeline and test environment with Docker Compose, improving test reliability and workflow efficiency.\",\n                    \"sortdate\": \"2023-06-01\",\n                    \"tech\": \"Bash scripting, Docker, Docker Compose, CI pipelines\"\n                },\n                {\n                    \"desc\": \"Implemented an integration of in-house end-to-end and isolated testing tooling to work with the Gmail API (Rust), to facilitate automated email testing using real email, enabling new capabilities and use cases with the existing testing framework for several teams within the organization.\",\n                    \"sortdate\": \"2023-01-01\",\n                    \"tech\": \"Gmail API, Rust, GitLabCI\"\n                }\n            ]\n        },\n        {\n            \"company\": \"PerfectServe/Telmediq\",\n            \"tag\": \"tmq\",\n            \"companydesc\": \"Clinical Communication and Collaboration\",\n            \"location\": \"Victoria, BC\",\n            \"jobtitle\": \"Software Engineer\",\n            \"daterange\": \"Oct 2019 - Nov 2021\",\n            \"sortdate\": \"2021-08-15\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed an interactive SMS-based survey microservice for patient follow-up, utilizing Django/Python and integrating Twilio for efficient SMS communication, as a drop-in replacement for a vendor product, realizing tens of thousands of dollars of monthly operational cost savings.\",\n                    \"tech\": \"Django/Python, Twilio, Postgres, Kubernetes\"\n                },\n                {\n                    \"desc\": \"Engineered robust integrations with third-party scheduling system APIs using Python, ensuring seamless synchronization between physician schedules and the existing client IT infrastructure.\",\n                    \"tech\": \"Django/Python, APIs, Spinnaker, Kubernetes\"\n                }\n            ]\n        },\n        {\n            \"company\": \"Go2mobi\",\n            \"tag\": \"go2\",\n            \"companydesc\": \"Mobile Advertising Self-Serve DSP\",\n            \"location\": \"Victoria, BC\",\n            \"jobtitle\": \"Senior Software Developer\",\n            \"daterange\": \"Nov 2012 - Feb 2017\",\n            \"sortdate\": \"2017-02-01\",\n            \"projects\": [\n                {\n                    \"desc\": \"Built and maintained mobile advertising Real Time Bidder in Python, later transitioned to Go. Handled 500,000 queries per second on a cluster of 15 servers.\",\n                    \"tech\": \"Go, Python, AWS, RabbitMQ, Redis, MySQL+Postgres\"\n                },\n                {\n                    \"desc\": \"Developed processes for ETL and reporting the hundreds of millions of records per day generated by the bidder, providing key decision-making data for successful advertising campaign execution.\",\n                    \"tech\": \"Python, RabbitMQ, MySQL, Redshift+RDS\"\n                }\n            ]\n        },\n        {\n            \"company\": \"CHWS\",\n            \"tag\": \"chws\",\n            \"companydesc\": \"Software Development Consultancy\",\n            \"location\": \"Lethbridge, AB\",\n            \"jobtitle\": \"Senior Software Developer\",\n            \"daterange\": \"2010 - Present\",\n            \"sortdate\": \"2011-01-01\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed a decentralized social network system built on IPFS, a Bitcoin Lightning Network donation invoice system for a website, and a captcha solving game for 4chan users, showcasing my adaptability and proficiency with a variety of technologies and platforms.\",\n                    \"sortdate\": \"2012-01-01\",\n                    \"tech\": \"Go, Docker, Nginx, Git, Python, JavaScript, Node.js, ES6, Perl, HTML5, React, MySQL, Redis, Asterisk, IPFS, LND, Bitcoind, VSCode, Github Actions\",\n                    \"github\": \"https://github.com/BladeMcCool/ReactResume\",\n                    \"location\": \"Remote\",\n                    \"jobtitle\": \"Open Source Developer\"\n                }\n            ]\n        }\n    ],\n    \"education_v2\": [\n        {\n            \"institution\": \"Humber College\",\n            \"location\": \"Toronto, ON\",\n            \"description\": \"3 year Computer Programmer/Analyst Diploma\",\n            \"graduated\": \"May 2002\",\n            \"notes\": [\n                \"Graduated with honors\"\n            ]\n        }\n    ],\n    \"skills\": [\n        \"Solving complex problems involving dynamic systems with many moving parts\",\n        \"Self-learning, adapting to new tech across full-stack development\",\n        \"Back-end development with Go, Python, Rust, Node.js\",\n        \"Front-end web app development using React/JSX/HTML5, ES6/Javascript, REST, SCSS\",\n        \"Data management with Postgres, MySQL, Redis, AMQP\",\n        \"Proficient with Docker, JetBrains IDEs, CI systems\",\n        \"Experienced with AWS, Kubernetes\"\n    ]\n}"
-	//test6 := "{\n    \"personal_info\": {\n        \"name\": \"Chris A. Hagglund\",\n        \"email\": \"chris@chws.ca\",\n        \"phone\": \"250-532-9694\",\n        \"linkedin\": \"linkedin.com/in/1337-chris-hagglund\",\n        \"location\": \"Lethbridge AB\",\n        \"profile\": \"Software Engineer specializing in Blockchain and Data Solutions\",\n        \"github\": \"https://github.com/BladeMcCool\"\n    },\n    \"key_skills\": [\n        \"Expert in Python and SQL, with extensive experience in data-intensive environments\",\n        \"Proficient in developing robust back-end solutions, integrations, and microservices with Go and Python\",\n        \"Strong understanding of blockchain technology and experience with smart contracts and APIs\",\n        \"Skilled in Docker and Kubernetes for container orchestration and deployment\",\n        \"Exceptional problem-solving skills with a focus on data integrity and process documentation\"\n    ],\n    \"work_history\": [\n        {\n            \"company\": \"Kraken\",\n            \"tag\": \"krk\",\n            \"companydesc\": \"Digital Asset Exchange\",\n            \"location\": \"Remote\",\n            \"jobtitle\": \"Software Engineer II\",\n            \"daterange\": \"Jan 2022 - Mar 2024\",\n            \"sortdate\": \"2024-03-11\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed a custom Terraform provider to sync resources with third-party accounting services, enhancing operational efficiency and supporting institutional clients in managing their crypto assets.\",\n                    \"sortdate\": \"2022-01-24\",\n                    \"tech\": \"Terraform, Go, APIs\"\n                },\n                {\n                    \"desc\": \"Implemented improvements to an internal production deployment tool in Go, integrating blockchain metrics with Prometheus for enhanced monitoring and reliability, ensuring data integrity across deployments.\",\n                    \"sortdate\": \"2022-06-01\",\n                    \"tech\": \"Go, Docker, Nomad, Prometheus, Grafana\"\n                },\n                {\n                    \"desc\": \"Unified isolated testing frameworks across multiple repositories, improving the CI pipeline and ensuring seamless integration of blockchain data processes.\",\n                    \"sortdate\": \"2023-06-01\",\n                    \"tech\": \"Bash scripting, Docker, CI pipelines\"\n                }\n            ]\n        },\n        {\n            \"company\": \"CHWS\",\n            \"tag\": \"chws\",\n            \"companydesc\": \"Blockchain Solutions Consultancy\",\n            \"location\": \"Lethbridge, AB\",\n            \"jobtitle\": \"Senior Software Developer\",\n            \"daterange\": \"2010 - Present\",\n            \"sortdate\": \"2011-01-01\",\n            \"projects\": [\n                {\n                    \"desc\": \"Pioneered a Bitcoin Lightning Network donation system, integrating blockchain payment solutions that facilitate secure transactions for charitable contributions.\",\n                    \"sortdate\": \"2019-04-27\",\n                    \"tech\": \"Go, Nginx, JavaScript, HTML5, LND, Bitcoind\"\n                },\n                {\n                    \"desc\": \"Created a decentralized social network prototype leveraging blockchain data structures, enhancing user privacy and data security.\",\n                    \"sortdate\": \"2021-03-15\",\n                    \"tech\": \"Go, ES6, IPFS, Docker\"\n                },\n                {\n                    \"desc\": \"Designed a hosted Bitcoin wallet system allowing users to interact via touch-tone telephone, showcasing innovation in blockchain accessibility.\",\n                    \"sortdate\": \"2012-01-01\",\n                    \"tech\": \"Perl, Asterisk, Bitcoind\"\n                }\n            ]\n        },\n        {\n            \"company\": \"PerfectServe/Telmediq\",\n            \"tag\": \"tmq\",\n            \"companydesc\": \"Clinical Communication and Collaboration\",\n            \"location\": \"Victoria, BC\",\n            \"jobtitle\": \"Software Engineer\",\n            \"daterange\": \"Oct 2019 - Nov 2021\",\n            \"sortdate\": \"2021-08-15\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed an innovative SMS-based survey service for patient follow-up, integrating Twilio and ensuring seamless data flow for healthcare professionals.\",\n                    \"tech\": \"Django/Python, Twilio, Kubernetes\"\n                },\n                {\n                    \"desc\": \"Engineered integrations with third-party scheduling systems, enabling efficient data synchronization and improving client IT infrastructure.\",\n                    \"tech\": \"Django/Python, APIs, Kubernetes\"\n                }\n            ]\n        },\n        {\n            \"company\": \"Go2mobi\",\n            \"tag\": \"go2\",\n            \"companydesc\": \"Mobile Advertising Self-Serve DSP\",\n            \"location\": \"Victoria, BC\",\n            \"jobtitle\": \"Senior Software Developer\",\n            \"daterange\": \"Nov 2012 - Feb 2017\",\n            \"sortdate\": \"2017-02-01\",\n            \"projects\": [\n                {\n                    \"desc\": \"Developed a high-performance Real Time Bidder handling extensive data transactions, optimizing query speed and reliability in a competitive environment.\",\n                    \"tech\": \"Go, Python, AWS, RabbitMQ\"\n                },\n                {\n                    \"desc\": \"Implemented ETL processes for analyzing vast datasets, providing actionable insights for advertising strategies.\",\n                    \"tech\": \"Python, MySQL, Redshift\"\n                }\n            ]\n        }\n    ],\n    \"education_v2\": [\n        {\n            \"institution\": \"Humber College\",\n            \"location\": \"Toronto, ON\",\n            \"description\": \"3 year Computer Programmer/Analyst Diploma\",\n            \"graduated\": \"May 2002\",\n            \"notes\": [\n                \"Graduated with honors\"\n            ]\n        }\n    ],\n    \"skills\": [\n        \"Expert in Python and SQL for data aggregation and analysis\",\n        \"Proficient in blockchain technology and decentralized applications\",\n        \"Experienced with Docker and Kubernetes for cloud-based solutions\",\n        \"Strong problem-solving skills with a focus on data integrity\",\n        \"Excellent communication and documentation abilities\"\n    ]\n}"
-	//fmt.Println("some test result output")
-	//fmt.Println(test6)
-
 }
 
-func writeAttemptResumedataJSON(content, layout, style, outputDir string, attemptNum int) error {
+// worker simulates a worker that processes jobs.
+func worker(config *serviceConfig) {
+	for job := range jobQueue {
+		//mu.Lock()
+		//jobID := jobIDCounter
+		//jobIDCounter++
+		//mu.Unlock()
+		log.Printf("do something with this job: %#v", job)
+
+		baselineJSON := job.BaselineJSON //i think really this is where it should come from
+		var err error
+		if baselineJSON == "" {
+			//but for some testing (and the initial implementation, predating the json server even, where my personal info was baked into the react project ... anyway, that got moved to the json server and some variants got names. but that should all get deprecated i think)
+			baselineJSON, err = getBaselineJSON(job.Baseline, config)
+			if err != nil {
+				log.Fatalf("error from reading baseline JSON: %v", err)
+			}
+		}
+
+		layout, style, err := getLayoutFromBaselineJSON(baselineJSON)
+		if err != nil {
+			log.Fatalf("error from extracting layout from baseline JSON: %v", err)
+		}
+		if job.StyleOverride != "" {
+			style = job.StyleOverride
+		}
+
+		expectResponseSchema, err := getExpectedResponseJsonSchema(layout)
+		//todo refactor this stuff lol
+		inputTemp := &Input{
+			JD:                   job.JobDescription,
+			ExpectResponseSchema: expectResponseSchema,
+			APIKey:               config.openAiApiKey,
+		}
+		if err != nil {
+			log.Fatalf("Error reading input files: %v", err)
+		}
+
+		mainPrompt := job.CustomPrompt
+		if mainPrompt == "" {
+			mainPrompt, err = getDefaultPrompt(layout)
+			if err != nil {
+				log.Println("error from reading input prompt: ", err)
+				return
+			}
+		}
+
+		//todo: fix this calls arguments it should probably just be one struct.
+		err = tuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, job.Id.String(), acceptableRatio, maxAttempts, fs, config)
+		if err != nil {
+			log.Fatalf("Error from resume tuning: %v", err)
+		}
+
+		// Simulate job processing
+		//time.Sleep(5 * time.Second)
+		//result := fmt.Sprintf("Processed job with field1: %s, field2: %s, field3: %s", job.Field1, job.Field2, job.Field3)
+
+		//jobResult := JobResult{ID: jobID, Status: "Completed", Result: result}
+
+		// Store job result in filesystem
+		//if err := fs.WriteFile(jobID, jobResult); err != nil {
+		//	log.Printf("Error writing job result: %v", err)
+		//}
+	}
+}
+
+// handleJobSubmission handles incoming job submissions via POST.
+func handleJobSubmission(w http.ResponseWriter, r *http.Request) {
+	log.Println("here in handleJobSubmission")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var job Job
+	if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
+		http.Error(w, "Invalid JSON input", http.StatusBadRequest)
+		return
+	}
+	log.Printf("here in handleJobSubmission with job like: %#v", job)
+
+	//// Add job to queue
+	//mu.Lock()
+	//jobID := jobIDCounter
+	//jobIDCounter++
+	//mu.Unlock()
+	job.Id = uuid.New()
+	jobQueue <- job
+
+	// Respond with a job URL
+	jobURL := fmt.Sprintf("/checkjob/%d", 12345)
+	w.WriteHeader(http.StatusAccepted)
+	w.Write([]byte(fmt.Sprintf("Job submitted successfully. Poll job status at: %s", jobURL)))
+}
+
+// handleJobStatus handles checking job status via GET.
+func handleJobStatus(w http.ResponseWriter, r *http.Request) {
+	jobIDStr := r.URL.Path[len("/checkjob/"):]
+	jobID, err := strconv.Atoi(jobIDStr)
+	if err != nil {
+		http.Error(w, "Invalid job ID", http.StatusBadRequest)
+		return
+	}
+
+	_ = jobID
+	log.Printf("NYI: checking of job results via http")
+	jobResult := &JobResult{}
+	//jobResult, err := fs.ReadFile(jobID)
+	//if err != nil {
+	//	http.Error(w, "Job not found", http.StatusNotFound)
+	//	return
+	//}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(jobResult)
+}
+
+// parseFlags parses the command line arguments.
+// func parseFlags() (string, string) {
+func parseFlags() string {
+	mode := flag.String("mode", "server", "Mode: either 'server' or 'cli'")
+	//fsType := flag.String("fs", "local", "Filesystem type: 'local' or 'gcs'")
+	//localPath := flag.String("local-path", "./jobs", "Local file path for job storage (only for 'local' filesystem)")
+	//gcsBucket := flag.String("gcs-bucket", "", "GCS bucket name for job storage (only for 'gcs' filesystem)")
+
+	flag.Parse()
+
+	// Validation
+	//if *fsType == "gcs" && *gcsBucket == "" {
+	//	log.Fatal("GCS bucket name must be specified for GCS filesystem")
+	//}
+	//
+	//if *fsType == "local" && *localPath == "" {
+	//	log.Fatal("Local path must be specified for local filesystem")
+	//}
+	//
+	//return *mode, *fsType
+	return *mode
+}
+
+// configureFilesystem sets up the filesystem based on the command line flags.
+func configureFilesystem(config *serviceConfig) filesystem.FileSystem {
+	if config.fsType == "local" {
+		return &filesystem.LocalFileSystem{BasePath: config.localPath}
+	} else if config.fsType == "gcs" {
+		// Create a new GCS client
+		log.Printf("setting up gcs client ...")
+		ctx := context.Background()
+		client, err := storage.NewClient(ctx)
+		if err != nil {
+			log.Fatalf("Failed to create GCS client: %v", err)
+		}
+		if config.gcsBucket == "" {
+			log.Fatal("gcs-bucket arg needs to have a value")
+		}
+		return &filesystem.GCSFileSystem{Client: client, BucketName: config.gcsBucket}
+	}
+	return nil
+}
+
+func writeAttemptResumedataJSON(content, layout, style, outputDir string, attemptNum int, fs filesystem.FileSystem, config *serviceConfig) error {
 	// Step 5: Write the validated content to the filesystem in a way the resume projects json server can read it, plus locally for posterity.
 	// Assuming the file path is up and outside of the project directory
 	// Example: /home/user/output/validated_content.json
-	outputFilePath := filepath.Join("../ResumeData/resumedata/", fmt.Sprintf("attempt%d.json", attemptNum))
 	updatedContent, err := insertLayout(content, layout, style)
 	if err != nil {
 		log.Printf("Error inserting layout info: %v\n", err)
 		return err
 	}
-	err = writeValidatedContent(updatedContent, outputFilePath)
-	if err != nil {
-		log.Printf("Error writing content to file: %v\n", err)
-		return err
+
+	//TODO !!!!!!!! dont do this!!!!!! not like this!!!!
+	if config.fsType == "local" {
+		// this is/was just a cheesy way to get the attempted resume updated json available to the react project via a local json server service.
+		outputFilePath := filepath.Join("../ResumeData/resumedata/", fmt.Sprintf("attempt%d.json", attemptNum))
+		err = writeValidatedContent(updatedContent, outputFilePath)
+		if err != nil {
+			log.Printf("Error writing content to file: %v\n", err)
+			return err
+		}
+		log.Println("Content successfully written to:", outputFilePath)
+	} else if config.fsType == "gcs" {
+		outputFilePath := fmt.Sprintf("%s/attempt%d.json", outputDir, attemptNum)
+		log.Printf("writeAttemptResumedataJSON to GCS bucket, path: %s", outputFilePath)
+		fs.WriteFile(outputFilePath, []byte(content))
+		log.Printf("writeAttemptResumedataJSON thinks it got past that.")
 	}
-	log.Println("Content successfully written to:", outputFilePath)
 
 	// Example: /home/user/output/validated_content.json
 	localOutfilePath := filepath.Join(outputDir, fmt.Sprintf("attempt%d.json", attemptNum))
@@ -355,9 +442,9 @@ func insertLayout(content string, layout string, style string) (string, error) {
 	return string(updatedContent), nil
 }
 
-func getBaselineJSON(baseline string) (string, error) {
+func getBaselineJSON(baseline string, config *serviceConfig) (string, error) {
 	// get JSON of the current complete resume including all the hidden stuff, this hits an express server that imports the reactresume resumedata.mjs and outputs it as json.
-	resp, err := http.Get(fmt.Sprintf("http://localhost:3002?baseline=%s", baseline))
+	resp, err := http.Get(fmt.Sprintf("%s?baseline=%s", config.jsonServerURL, baseline))
 	if err != nil {
 		log.Fatalf("Failed to make the HTTP request: %v", err)
 	}
@@ -504,7 +591,7 @@ func takeNotesOnJD(input *Input, outputDir string) (string, error) {
 	return content, nil
 }
 
-func getInputPrompt(directory, layout string) (string, error) {
+func getInputPrompt(directory string) (string, error) {
 	// Construct the filename
 	filepath := filepath.Join(directory, "prompt.txt")
 
@@ -795,6 +882,7 @@ func makePDFRequestAndSave(attempt int, layout, outputDir string) error {
 	}
 
 	log.Printf("PDF saved to %s\n", outputFilePath)
+
 	return nil
 }
 
@@ -925,22 +1013,10 @@ type Input struct {
 }
 
 // ReadInput reads the input files from the "input" directory and returns an Input struct
-func ReadInput(dir, layout string) (*Input, error) {
+func ReadInput(dir string) (*Input, error) {
 	// Define file paths
 	jdFilePath := filepath.Join(dir, "jd.txt")
-	expectResponseFilePath := filepath.Join("response_templates", fmt.Sprintf("%s-schema.json", layout))
 	apiKeyFilePath := filepath.Join(dir, "api_key.txt")
-
-	// Read expect_response.json
-	expectResponseContent, err := os.ReadFile(expectResponseFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read expect_response.json: %v", err)
-	}
-	// Validate the JSON content
-	expectResponseSchema, err := decodeJSON(string(expectResponseContent))
-	if err != nil {
-		return nil, err
-	}
 
 	// Read jd.txt
 	jdContent, err := os.ReadFile(jdFilePath)
@@ -967,9 +1043,24 @@ func ReadInput(dir, layout string) (*Input, error) {
 		InputDir: dir,
 		JD:       string(jdContent),
 		//ExpectResponse: string(expectResponseContent),
-		ExpectResponseSchema: expectResponseSchema,
-		APIKey:               apiKey,
+		//ExpectResponseSchema: expectResponseSchema,
+		APIKey: apiKey,
 	}, nil
+}
+
+func getExpectedResponseJsonSchema(layout string) (interface{}, error) {
+	expectResponseFilePath := filepath.Join("response_templates", fmt.Sprintf("%s-schema.json", layout))
+	// Read expect_response.json
+	expectResponseContent, err := os.ReadFile(expectResponseFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read expect_response.json: %v", err)
+	}
+	// Validate the JSON content
+	expectResponseSchema, err := decodeJSON(string(expectResponseContent))
+	if err != nil {
+		return nil, err
+	}
+	return expectResponseSchema, nil
 }
 
 // validateJSON checks if a string contains valid JSON

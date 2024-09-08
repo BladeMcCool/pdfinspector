@@ -1,5 +1,5 @@
 # Start with a base image that includes Go
-FROM golang:1.18-buster
+FROM golang:1.23
 
 # Install Ghostscript
 RUN apt-get update && apt-get install -y ghostscript

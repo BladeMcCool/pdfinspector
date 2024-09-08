@@ -126,3 +126,21 @@ cross functional somewhere in kraken stuff
 
 baseline checks:
 double-check that Redis is mentioned in baseline chrono and functional!
+
+https://pdfinspector-1025621488749.us-central1.run.app
+
+GOTENBERG_URL=https://gotenberg-1025621488749.us-central1.run.app
+JSON_SERVER_URL=https://json-server-1025621488749.us-central1.run.app
+REACT_APP_URL=https://react-app-1025621488749.us-central1.run.app
+
+docker run -e GOTENBERG_URL=https://gotenberg-1025621488749.us-central1.run.app \
+-e JSON_SERVER_URL=https://json-server-1025621488749.us-central1.run.app \
+-e REACT_APP_URL=https://react-app-1025621488749.us-central1.run.app \
+my-go-app
+
+gcloud run deploy my-go-app \
+--image gcr.io/your-project-id/my-go-app-image \
+--platform managed \
+--region us-central1 \
+--allow-unauthenticated \
+--set-env-vars GOTENBERG_URL=https://gotenberg-1025621488749.us-central1.run.app,JSON_SERVER_URL=https://json-server-1025621488749.us-central1.run.app,REACT_APP_URL=https://react-app-1025621488749.us-central1.run.app
