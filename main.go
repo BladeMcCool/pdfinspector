@@ -16,6 +16,7 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -66,6 +67,7 @@ type serviceConfig struct {
 	localPath     string
 	gcsBucket     string
 	openAiApiKey  string //oh noes the capitalization *hand waving* guess what? idgaf :) my way.
+	useSystemGs   bool   //in the deployed environment we will bake a gs into the image that runs this part, so we can just use a 'gs' command locally.
 }
 
 // main function: Either runs the web server or executes the main functionality.
@@ -110,6 +112,7 @@ func main() {
 	}
 }
 
+// todo: investigate if we can try out that generic stuff so that i dont have to have 2 versions of a function one for string and one for bool.
 // Helper function to get value from CLI args, env vars, or default
 func getConfig(cliValue *string, envVar string, defaultValue string) string {
 	if *cliValue != "" {
@@ -118,6 +121,22 @@ func getConfig(cliValue *string, envVar string, defaultValue string) string {
 	if value, exists := os.LookupEnv(envVar); exists {
 		return value
 	}
+	return defaultValue
+}
+func getConfigBool(cliValue *bool, envVar string, defaultValue bool) bool {
+	// First, check if the CLI value is provided
+	if *cliValue {
+		return *cliValue
+	} else if envVal, exists := os.LookupEnv(envVar); exists {
+		// Otherwise, check if the environment variable exists and is parseable as a bool
+		parsedValue, err := strconv.ParseBool(envVal)
+		if err != nil {
+			return defaultValue
+		}
+		return parsedValue
+	}
+
+	// If neither is provided, return the default value
 	return defaultValue
 }
 
@@ -132,20 +151,29 @@ func getServiceConfig() *serviceConfig {
 	localPath := flag.String("local-path", "", "Mode of the application (server or cli)")
 	fstype := flag.String("fstype", "", "File system type (local or gcs)")
 	mode := flag.String("mode", "", "Mode of the application (server or cli)")
+	useSystemGs := flag.Bool("use-system-gs", false, "Use GhostScript from the system instead of via docker run")
 
 	// Parse CLI flags
 	flag.Parse()
 
+	//var useSystemGsEnvVar
+	//useSystemGsX, err := strconv.ParseBool(getConfig(useSystemGs, "USE_SYSTEM_GS", "false"))
+	//if err == nil {
+	//	log.Fatalf("%v", err)
+	//}
+	//, // Default to "server"
+
 	// Populate the serviceConfig struct
 	config := &serviceConfig{
-		gotenbergURL:  getConfig(gotenbergURL, "GOTENBERG_URL", "http://localhost:3000"),
+		gotenbergURL:  getConfig(gotenbergURL, "GOTENBERG_URL", "http://localhost:80"),
 		jsonServerURL: getConfig(jsonServerURL, "JSON_SERVER_URL", "http://localhost:3002"),
-		reactAppURL:   getConfig(reactAppURL, "REACT_APP_URL", "http://localhost:5000"),
+		reactAppURL:   getConfig(reactAppURL, "REACT_APP_URL", "http://host.docker.internal:3000"),
 		openAiApiKey:  getConfig(openAiApiKey, "OPENAI_API_KEY", ""),
 		fsType:        getConfig(fstype, "FSTYPE", "gcs"),
 		gcsBucket:     getConfig(gcsBucket, "GCS_BUCKET", "my-stinky-bucket"),
 		localPath:     getConfig(localPath, "LOCAL_PATH", "output"),
 		mode:          getConfig(mode, "MODE", "server"), // Default to "server"
+		useSystemGs:   getConfigBool(useSystemGs, "USE_SYSTEM_GS", false),
 	}
 
 	//Validation
@@ -213,7 +241,7 @@ func oldMain(fs filesystem.FileSystem, config *serviceConfig) {
 	}
 
 	//todo: fix this calls arguments it should probably just be one struct.
-	err = tuneResumeContents(input, mainPrompt, baselineJSON, layout, style, outputDir, acceptableRatio, maxAttempts, fs, config)
+	err = tuneResumeContents(input, mainPrompt, baselineJSON, layout, style, outputDir, acceptableRatio, maxAttempts, fs, config, &Job{})
 	if err != nil {
 		log.Fatalf("Error from resume tuning: %v", err)
 	}
@@ -267,7 +295,7 @@ func worker(config *serviceConfig) {
 		}
 
 		//todo: fix this calls arguments it should probably just be one struct.
-		err = tuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, job.Id.String(), acceptableRatio, maxAttempts, fs, config)
+		err = tuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, job.Id.String(), acceptableRatio, maxAttempts, fs, config, &job)
 		if err != nil {
 			log.Fatalf("Error from resume tuning: %v", err)
 		}
@@ -444,7 +472,8 @@ func insertLayout(content string, layout string, style string) (string, error) {
 
 func getBaselineJSON(baseline string, config *serviceConfig) (string, error) {
 	// get JSON of the current complete resume including all the hidden stuff, this hits an express server that imports the reactresume resumedata.mjs and outputs it as json.
-	resp, err := http.Get(fmt.Sprintf("%s?baseline=%s", config.jsonServerURL, baseline))
+	jsonRequestURL := fmt.Sprintf("%s?baseline=%s", config.jsonServerURL, baseline)
+	resp, err := http.Get(jsonRequestURL)
 	if err != nil {
 		log.Fatalf("Failed to make the HTTP request: %v", err)
 	}
@@ -454,7 +483,7 @@ func getBaselineJSON(baseline string, config *serviceConfig) (string, error) {
 	if err != nil {
 		log.Fatalf("Failed to read the response body: %v", err)
 	}
-	log.Printf("got %d bytes of json from the json-server\n", len(body))
+	log.Printf("got %d bytes of json from the json-server via %s\n", len(body), jsonRequestURL)
 	return string(body), nil
 }
 
@@ -733,7 +762,7 @@ func inspectPNGFiles(outputDir string, attempt int) (inspectResult, error) {
 	return result, nil
 }
 
-func dumpPDFToPNG(attempt int, outputDir string) error {
+func dumpPDFToPNG(attempt int, outputDir string, config *serviceConfig) error {
 	// Get the current working directory
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -744,14 +773,26 @@ func dumpPDFToPNG(attempt int, outputDir string) error {
 	outputDirFullpath := filepath.Join(currentDir, outputDir)
 
 	//could maybe check the pdf for not containing error stuff like "Uncaught runtime errors" before proceeding.
-	cmd := exec.Command("docker", "run", "--rm",
-		"-v", fmt.Sprintf("%s:/workspace", outputDirFullpath),
-		"minidocks/ghostscript:latest",
-		"gs",
-		"-sDEVICE=txtwrite",
-		"-o", "/workspace/pdf-txtwrite.txt",
-		fmt.Sprintf("/workspace/attempt%d.pdf", attempt),
-	)
+	// MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd)/output:/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out-%03d.png -r144 /workspace/attempt.pdf
+	var cmd *exec.Cmd
+	if config.useSystemGs {
+		cmd = exec.Command(
+			"gs",
+			"-sDEVICE=txtwrite",
+			"-o", filepath.Join(outputDirFullpath, "pdf-txtwrite.txt"),
+			filepath.Join(outputDirFullpath, fmt.Sprintf("attempt%d.pdf", attempt)),
+		)
+	} else {
+		cmd = exec.Command("docker", "run", "--rm",
+			"-v", fmt.Sprintf("%s:/workspace", outputDirFullpath),
+			"minidocks/ghostscript:latest",
+			"gs",
+			"-sDEVICE=txtwrite",
+			"-o", "/workspace/pdf-txtwrite.txt",
+			fmt.Sprintf("/workspace/attempt%d.pdf", attempt),
+		)
+	}
+	log.Printf("dump pdf to txt with gs command: %s", strings.Join(cmd.Args, " "))
 	log.Println("About to check the pdf text to confirm no errors")
 	// Run the command
 	err = cmd.Run()
@@ -767,16 +808,27 @@ func dumpPDFToPNG(attempt int, outputDir string) error {
 		return fmt.Errorf("'Uncaught runtime errors' string detected in PDF contents.")
 	}
 
-	// dump pdf to png files, one per page, 144ppi
-	cmd = exec.Command("docker", "run", "--rm",
-		"-v", fmt.Sprintf("%s:/workspace", outputDirFullpath),
-		"minidocks/ghostscript:latest",
-		"gs",
-		"-sDEVICE=pngalpha",
-		"-o", fmt.Sprintf("/workspace/out%d-%%03d.png", attempt),
-		"-r144",
-		fmt.Sprintf("/workspace/attempt%d.pdf", attempt),
-	)
+	if config.useSystemGs {
+		cmd = exec.Command(
+			"gs",
+			"-sDEVICE=pngalpha",
+			"-o", filepath.Join(outputDirFullpath, fmt.Sprintf("out%d-%%03d.png", attempt)),
+			"-r144",
+			filepath.Join(outputDirFullpath, fmt.Sprintf("attempt%d.pdf", attempt)),
+		)
+	} else {
+		// dump pdf to png files, one per page, 144ppi
+		cmd = exec.Command("docker", "run", "--rm",
+			"-v", fmt.Sprintf("%s:/workspace", outputDirFullpath),
+			"minidocks/ghostscript:latest",
+			"gs",
+			"-sDEVICE=pngalpha",
+			"-o", fmt.Sprintf("/workspace/out%d-%%03d.png", attempt),
+			"-r144",
+			fmt.Sprintf("/workspace/attempt%d.pdf", attempt),
+		)
+	}
+	log.Printf("dump pdf to png with gs command: %s", strings.Join(cmd.Args, " "))
 
 	// Capture the output into a byte buffer
 	var outBuffer bytes.Buffer
@@ -816,7 +868,7 @@ func dumpPDFToPNG(attempt int, outputDir string) error {
 	return nil
 }
 
-func makePDFRequestAndSave(attempt int, layout, outputDir string) error {
+func makePDFRequestAndSave(attempt int, layout, outputDir string, config *serviceConfig, job *Job) error {
 	// Step 1: Create a new buffer and a multipart writer
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
@@ -826,7 +878,22 @@ func makePDFRequestAndSave(attempt int, layout, outputDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create form field: %v", err)
 	}
-	_, err = io.WriteString(urlField, fmt.Sprintf("http://host.docker.internal:3000/?resumedata=attempt%d&layout=%s", attempt, layout))
+
+	var urlToRender string
+	if config.fsType == "gcs" {
+		//for server mode with gcs data we need to make sure we pass jsonserver with a hostname value (no https:// prefix), and make sure that the uuid and a slash (uri escaped) get prepended to the attemptN value.
+		jsonServerHostname, err := extractHostname(config.jsonServerURL)
+		if err != nil {
+			return err
+		}
+		jsonPathFragment := url.PathEscape(fmt.Sprintf("%s/attempt%d", job.Id.String(), attempt))
+		fmt.Sprintf("%s/attempt%d", job.Id.String(), attempt)
+		urlToRender = fmt.Sprintf("%s/?jsonserver=%s&resumedata=%s&layout=%s", config.reactAppURL, jsonServerHostname, jsonPathFragment, layout)
+	} else {
+		//legacy way, presumably json server is on local host or smth.
+		urlToRender = fmt.Sprintf("%s/?resumedata=attempt%d&layout=%s", config.reactAppURL, attempt, layout)
+	}
+	_, err = io.WriteString(urlField, urlToRender)
 	if err != nil {
 		return fmt.Errorf("failed to write to form field: %v", err)
 	}
@@ -838,7 +905,8 @@ func makePDFRequestAndSave(attempt int, layout, outputDir string) error {
 	}
 
 	// Step 4: Create a new POST request with the multipart form data
-	req, err := http.NewRequest("POST", "http://localhost:80/forms/chromium/convert/url", &requestBody)
+	gotenbergRequestURL := fmt.Sprintf("%s/forms/chromium/convert/url", config.gotenbergURL)
+	req, err := http.NewRequest("POST", gotenbergRequestURL, &requestBody)
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP request: %v", err)
 	}
@@ -846,6 +914,7 @@ func makePDFRequestAndSave(attempt int, layout, outputDir string) error {
 	// Step 5: Set the Content-Type header
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
+	log.Printf("Will ask gotenberg at %s to render page at %s", gotenbergRequestURL, urlToRender)
 	// Step 6: Send the HTTP request
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -884,6 +953,17 @@ func makePDFRequestAndSave(attempt int, layout, outputDir string) error {
 	log.Printf("PDF saved to %s\n", outputFilePath)
 
 	return nil
+}
+
+func extractHostname(rawURL string) (string, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+
+	// Extract the hostname without protocol and trailing slash
+	hostname := strings.TrimSuffix(parsedURL.Host, "/")
+	return hostname, nil
 }
 
 func checkForPreexistingAPIOutput(directory, filenameFragment string, counter int) (bool, string, error) {

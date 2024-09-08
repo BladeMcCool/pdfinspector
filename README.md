@@ -36,6 +36,9 @@ loop up to five times to get to a better resume under 1 page
         curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url=http://host.docker.internal:3000 -o ../pdfinspector/test2.pdf
         curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url="http://host.docker.internal:3000?layout=functional" -o ../pdfinspector/functional-test.pdf
         curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url="http://host.docker.internal:3000?layout=functional&resumedata=articulate" -o ./"Chris Hagglund Resume.pdf"
+        
+        curl -v --request POST https://gotenberg-1025621488749.us-central1.run.app/forms/chromium/convert/url --form url="https://react-app-1025621488749.us-central1.run.app/?jsonserver=json-server-1025621488749.us-central1.run.app&resumedata=46564153-d10c-48d5-a6fa-8df216f798b0%2Fattempt0&layout=functional" -o ./"deployed_test.pdf"
+
     cause a ghostscript png render of the pdf
         (that env stuff maybe not needed if we use go program to execute it - but we'll have to fill the pwd too)
         MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd):/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out2-%03d.png -r144 /workspace/test2.pdf

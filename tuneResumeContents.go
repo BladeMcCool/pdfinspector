@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, outputDir string, acceptableRatio float64, maxAttempts int, fs filesystem.FileSystem, config *serviceConfig) error {
+func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, outputDir string, acceptableRatio float64, maxAttempts int, fs filesystem.FileSystem, config *serviceConfig, job *Job) error {
 	jDmetaRawJSON, err := takeNotesOnJD(input, outputDir)
 	if err != nil {
 		log.Println("error taking notes on JD: ", err)
@@ -36,6 +36,17 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 		"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
 		baselineJSON,
 	}
+
+	//perhaps the resumedata should be at the start and the instructions of what to do with it should come after? need to a/b test this stuff somehow.
+	//prompt_parts := []string{
+	//	"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
+	//	baselineJSON,
+	//	"\n--- start job description ---\n",
+	//	input.JD,
+	//	"\n--- end job description ---\n",
+	//	kwPrompt,
+	//	mainPrompt,
+	//}
 
 	prompt := strings.Join(prompt_parts, "")
 
@@ -115,14 +126,13 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 		err = writeAttemptResumedataJSON(content, layout, style, outputDir, i, fs, config)
 
 		//we should be able to render that updated content proposal now via gotenberg + ghostscript
-		err = makePDFRequestAndSave(i, layout, outputDir)
+		err = makePDFRequestAndSave(i, layout, outputDir, config, job)
 		if err != nil {
 			log.Printf("Error: %v\n", err)
 		}
 
 		//and the ghostscript dump to pngs ...
-		// MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd)/output:/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out-%03d.png -r144 /workspace/attempt.pdf
-		err = dumpPDFToPNG(i, outputDir)
+		err = dumpPDFToPNG(i, outputDir, config)
 		if err != nil {
 			log.Printf("Error during pdf to image dump: %v\n", err)
 			break
