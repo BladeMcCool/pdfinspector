@@ -105,6 +105,7 @@ func main() {
 	// Web server mode
 	http.HandleFunc("/submitjob", handleJobSubmission)
 	http.HandleFunc("/checkjob/", handleJobStatus)
+	http.HandleFunc("/runjob", handJobRun(config))
 
 	fmt.Println("Starting server on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -173,7 +174,7 @@ func getServiceConfig() *serviceConfig {
 		gcsBucket:     getConfig(gcsBucket, "GCS_BUCKET", "my-stinky-bucket"),
 		localPath:     getConfig(localPath, "LOCAL_PATH", "output"),
 		mode:          getConfig(mode, "MODE", "server"), // Default to "server"
-		useSystemGs:   getConfigBool(useSystemGs, "USE_SYSTEM_GS", false),
+		useSystemGs:   getConfigBool(useSystemGs, "USE_SYSTEM_GS", true),
 	}
 
 	//Validation
@@ -250,67 +251,71 @@ func oldMain(fs filesystem.FileSystem, config *serviceConfig) {
 // worker simulates a worker that processes jobs.
 func worker(config *serviceConfig) {
 	for job := range jobQueue {
-		//mu.Lock()
-		//jobID := jobIDCounter
-		//jobIDCounter++
-		//mu.Unlock()
-		log.Printf("do something with this job: %#v", job)
-
-		baselineJSON := job.BaselineJSON //i think really this is where it should come from
-		var err error
-		if baselineJSON == "" {
-			//but for some testing (and the initial implementation, predating the json server even, where my personal info was baked into the react project ... anyway, that got moved to the json server and some variants got names. but that should all get deprecated i think)
-			baselineJSON, err = getBaselineJSON(job.Baseline, config)
-			if err != nil {
-				log.Fatalf("error from reading baseline JSON: %v", err)
-			}
-		}
-
-		layout, style, err := getLayoutFromBaselineJSON(baselineJSON)
-		if err != nil {
-			log.Fatalf("error from extracting layout from baseline JSON: %v", err)
-		}
-		if job.StyleOverride != "" {
-			style = job.StyleOverride
-		}
-
-		expectResponseSchema, err := getExpectedResponseJsonSchema(layout)
-		//todo refactor this stuff lol
-		inputTemp := &Input{
-			JD:                   job.JobDescription,
-			ExpectResponseSchema: expectResponseSchema,
-			APIKey:               config.openAiApiKey,
-		}
-		if err != nil {
-			log.Fatalf("Error reading input files: %v", err)
-		}
-
-		mainPrompt := job.CustomPrompt
-		if mainPrompt == "" {
-			mainPrompt, err = getDefaultPrompt(layout)
-			if err != nil {
-				log.Println("error from reading input prompt: ", err)
-				return
-			}
-		}
-
-		//todo: fix this calls arguments it should probably just be one struct.
-		err = tuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, job.Id.String(), acceptableRatio, maxAttempts, fs, config, &job)
-		if err != nil {
-			log.Fatalf("Error from resume tuning: %v", err)
-		}
-
-		// Simulate job processing
-		//time.Sleep(5 * time.Second)
-		//result := fmt.Sprintf("Processed job with field1: %s, field2: %s, field3: %s", job.Field1, job.Field2, job.Field3)
-
-		//jobResult := JobResult{ID: jobID, Status: "Completed", Result: result}
-
-		// Store job result in filesystem
-		//if err := fs.WriteFile(jobID, jobResult); err != nil {
-		//	log.Printf("Error writing job result: %v", err)
-		//}
+		runJob(&job, config)
 	}
+}
+
+func runJob(job *Job, config *serviceConfig) {
+	//mu.Lock()
+	//jobID := jobIDCounter
+	//jobIDCounter++
+	//mu.Unlock()
+	log.Printf("do something with this job: %#v", job)
+
+	baselineJSON := job.BaselineJSON //i think really this is where it should come from
+	var err error
+	if baselineJSON == "" {
+		//but for some testing (and the initial implementation, predating the json server even, where my personal info was baked into the react project ... anyway, that got moved to the json server and some variants got names. but that should all get deprecated i think)
+		baselineJSON, err = getBaselineJSON(job.Baseline, config)
+		if err != nil {
+			log.Fatalf("error from reading baseline JSON: %v", err)
+		}
+	}
+
+	layout, style, err := getLayoutFromBaselineJSON(baselineJSON)
+	if err != nil {
+		log.Fatalf("error from extracting layout from baseline JSON: %v", err)
+	}
+	if job.StyleOverride != "" {
+		style = job.StyleOverride
+	}
+
+	expectResponseSchema, err := getExpectedResponseJsonSchema(layout)
+	//todo refactor this stuff lol
+	inputTemp := &Input{
+		JD:                   job.JobDescription,
+		ExpectResponseSchema: expectResponseSchema,
+		APIKey:               config.openAiApiKey,
+	}
+	if err != nil {
+		log.Fatalf("Error reading input files: %v", err)
+	}
+
+	mainPrompt := job.CustomPrompt
+	if mainPrompt == "" {
+		mainPrompt, err = getDefaultPrompt(layout)
+		if err != nil {
+			log.Println("error from reading input prompt: ", err)
+			return
+		}
+	}
+
+	//todo: fix this calls arguments it should probably just be one struct.
+	err = tuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, job.Id.String(), acceptableRatio, maxAttempts, fs, config, job)
+	if err != nil {
+		log.Fatalf("Error from resume tuning: %v", err)
+	}
+
+	// Simulate job processing
+	//time.Sleep(5 * time.Second)
+	//result := fmt.Sprintf("Processed job with field1: %s, field2: %s, field3: %s", job.Field1, job.Field2, job.Field3)
+
+	//jobResult := JobResult{ID: jobID, Status: "Completed", Result: result}
+
+	// Store job result in filesystem
+	//if err := fs.WriteFile(jobID, jobResult); err != nil {
+	//	log.Printf("Error writing job result: %v", err)
+	//}
 }
 
 // handleJobSubmission handles incoming job submissions via POST.
@@ -329,10 +334,6 @@ func handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 	log.Printf("here in handleJobSubmission with job like: %#v", job)
 
 	//// Add job to queue
-	//mu.Lock()
-	//jobID := jobIDCounter
-	//jobIDCounter++
-	//mu.Unlock()
 	job.Id = uuid.New()
 	jobQueue <- job
 
@@ -362,6 +363,30 @@ func handleJobStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(jobResult)
+}
+
+// handJobRun keep the connection going for the life of the job (try stuff in google cloud run)
+func handJobRun(config *serviceConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("here in handJobRun")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var job Job
+		if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
+			http.Error(w, "Invalid JSON input", http.StatusBadRequest)
+			return
+		}
+		log.Printf("here in handJobRun with job like: %#v", job)
+
+		//// Add job to queue
+		job.Id = uuid.New()
+		runJob(&job, config)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(fmt.Sprintf("Job complete. Maybe I could give pdf data")))
+	}
 }
 
 // parseFlags parses the command line arguments.
@@ -796,17 +821,20 @@ func dumpPDFToPNG(attempt int, outputDir string, config *serviceConfig) error {
 	log.Println("About to check the pdf text to confirm no errors")
 	// Run the command
 	err = cmd.Run()
+	log.Println("Here just after run")
 	if err != nil {
 		return fmt.Errorf("Error running docker command: %v\n", err)
 	}
-
+	log.Println("Here before readfile")
 	data, err := os.ReadFile(filepath.Join(outputDirFullpath, "pdf-txtwrite.txt"))
 	if err != nil {
 		return fmt.Errorf("error reading pdf txt output %v", err)
 	}
+	log.Println("Here before checking for strings")
 	if strings.Contains(string(data), "Uncaught runtime errors") {
 		return fmt.Errorf("'Uncaught runtime errors' string detected in PDF contents.")
 	}
+	log.Println("Here before proceeding to image dumping")
 
 	if config.useSystemGs {
 		cmd = exec.Command(
@@ -898,7 +926,27 @@ func makePDFRequestAndSave(attempt int, layout, outputDir string, config *servic
 		return fmt.Errorf("failed to write to form field: %v", err)
 	}
 
-	// Step 3: Close the multipart writer to finalize the form data
+	// add a waitForExpression since i got a pdf that just had "Loading..." in it ... bad.
+	waitForExpressionField, err := writer.CreateFormField("waitForExpression")
+	if err != nil {
+		return fmt.Errorf("failed to create form field: %v", err)
+	}
+	_, err = io.WriteString(waitForExpressionField, "window.contentLoaded === true")
+	if err != nil {
+		return fmt.Errorf("failed to write to form field: %v", err)
+	}
+
+	//// test waitDelay (it seemed to work but the js thing above is way more explicit)
+	//waitDelayField, err := writer.CreateFormField("waitDelay")
+	//if err != nil {
+	//	return fmt.Errorf("failed to create form field: %v", err)
+	//}
+	//_, err = io.WriteString(waitDelayField, "3s")
+	//if err != nil {
+	//	return fmt.Errorf("failed to write to form field: %v", err)
+	//}
+
+	// Close the multipart writer to finalize the form data
 	err = writer.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close multipart writer: %v", err)
