@@ -4,6 +4,7 @@ import (
 	"cloud.google.com/go/storage"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -18,7 +19,7 @@ import (
 // FileSystem interface defines methods to interact with different types of file systems.
 type FileSystem interface {
 	WriteFile(filename string, data []byte) error
-	//ReadFile(jobID int) (JobResult, error)
+	ReadFile(filename string) ([]byte, error)
 }
 
 // LocalFileSystem implements FileSystem interface for local file operations.
@@ -35,20 +36,14 @@ func (lfs *LocalFileSystem) WriteFile(filename string, data []byte) error {
 	//}
 	return os.WriteFile(filePath, data, 0644)
 }
-
-//// ReadFile reads the job result from a local file.
-//func (lfs *LocalFileSystem) ReadFile(jobID int) (JobResult, error) {
-//	filePath := filepath.Join(lfs.BasePath, fmt.Sprintf("job_%d.json", jobID))
-//	fileData, err := ioutil.ReadFile(filePath)
-//	if err != nil {
-//		return JobResult{}, err
-//	}
-//	var jobResult JobResult
-//	if err := json.Unmarshal(fileData, &jobResult); err != nil {
-//		return JobResult{}, err
-//	}
-//	return jobResult, nil
-//}
+func (lfs *LocalFileSystem) ReadFile(filename string) ([]byte, error) {
+	filePath := filepath.Join(lfs.BasePath, filename)
+	fileData, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	return fileData, nil
+}
 
 // GCSFileSystem implements FileSystem interface for Google Cloud Storage.
 type GCSFileSystem struct {
@@ -79,25 +74,16 @@ func (gcs *GCSFileSystem) WriteFile(filename string, data []byte) error {
 
 	return nil
 }
-
-//// ReadFile reads the job result from a GCS object.
-//func (gcs *GCSFileSystem) ReadFile(jobID int) (JobResult, error) {
-//	ctx := context.Background()
-//	objectPath := fmt.Sprintf("job_%d.json", jobID)
-//	rc, err := gcs.Client.Bucket(gcs.BucketName).Object(objectPath).NewReader(ctx)
-//	if err != nil {
-//		return JobResult{}, err
-//	}
-//	defer rc.Close()
-//
-//	fileData, err := ioutil.ReadAll(rc)
-//	if err != nil {
-//		return JobResult{}, err
-//	}
-//
-//	var jobResult JobResult
-//	if err := json.Unmarshal(fileData, &jobResult); err != nil {
-//		return JobResult{}, err
-//	}
-//	return jobResult, nil
-//}
+func (gcs *GCSFileSystem) ReadFile(filename string) ([]byte, error) {
+	ctx := context.Background()
+	rc, err := gcs.Client.Bucket(gcs.BucketName).Object(filename).NewReader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	fileData, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, err
+	}
+	return fileData, nil
+}

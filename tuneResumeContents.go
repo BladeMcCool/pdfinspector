@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"pdfinspector/filesystem"
 	"strings"
 )
@@ -89,6 +91,8 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 	}
 	messages := data["messages"].([]map[string]interface{}) //preserve orig
 
+	var attemptsLog []inspectResult
+
 	for i := 0; i < maxAttempts; i++ {
 		api_request_pretty, err := serializeToJSON(data)
 		writeToFile(api_request_pretty, i, "api_request_pretty", outputDir)
@@ -149,6 +153,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 			log.Printf("Error inspecting png files: %v\n", err)
 			break
 		}
+		attemptsLog = append(attemptsLog, result)
 
 		log.Printf("inspect result: %#v", result)
 		if result.NumberOfPages == 0 {
@@ -182,6 +187,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 			//try to make it longer!!! - include the assistants last message in the new prompt so it can see what it did
 		} else if result.NumberOfPages == 1 && result.LastPageContentRatio >= acceptableRatio {
 			log.Printf("over %d%% and still on one page? nice. we should stop (determined complete after attempt index %d).\n", int(acceptableRatio*100), i)
+			//we will stop now, and this will be the 'best' one found by getBestAttemptIndex later if we are saving one to gcs.
 			break
 		}
 		log.Printf("will try new prompt: %s", tryPrompt)
@@ -210,15 +216,96 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 			//data["messages"] = messages
 		}
 	}
+	saveBestAttemptToGCS(attemptsLog, fs, config, job, updates)
 
-	// Step 6: Marshal the request body into JSON
-	finalJSON, err := json.Marshal(data)
-	if err != nil {
-		log.Fatalf("Failed to marshal final JSON: %v", err)
-		return nil
+	return nil
+}
+
+// alright this is my cheesy naive implementation that just reads the file and then writes it but in short order i'd like to try out streaming it from fs to gcs with code similar to what is commented below this func implementation
+func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, config *serviceConfig, job *Job, updates chan JobStatus) {
+	//only if we're using gs fs of course.
+	if config.fsType != "gcs" {
+		return
 	}
 
-	// Print the final JSON request body
-	fmt.Println(string(finalJSON))
-	return nil
+	bestAttemptIndex := getBestAttemptIndex(results)
+	outputDir := job.Id.String()
+	filepath := filepath.Join(outputDir, fmt.Sprintf("attempt%d.pdf", bestAttemptIndex))
+	// Check if the file exists
+	_, err := os.Stat(filepath)
+	if err != nil {
+		log.Printf("error statting %s from the local filesystem", err.Error())
+		return
+	}
+
+	// File exists, read its contents
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		log.Printf("error getting %s from the local filesystem", err.Error())
+	}
+
+	outputFilePath := fmt.Sprintf("%s/Resume.pdf", outputDir) //maybe can save with the principals name instead? probably output filename options should be part of the job (name explicitly, name based on candidate data field, invent a name, etc)
+	sendJobUpdate(updates, fmt.Sprintf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex))
+	log.Printf("writing PDF data to GCS bucket path: %s", outputFilePath)
+	err = fs.WriteFile(outputFilePath, data)
+	if err != nil {
+		log.Printf("Error writing content to file: %v\n", err)
+	}
+	log.Printf("saveBestAttemptToGCS believed to be complete")
+	//todo: get the host name into the message below. should be able to get it from the http request ... can pass it down perhaps.
+	sendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: /joboutput/%s", len(data), outputFilePath))
+}
+
+//func uploadFileToGCS(bucketName, objectName, filePath string) error {
+//	// Create a context
+//	ctx := context.Background()
+//
+//	// Initialize a client using Application Default Credentials (ADC)
+//	client, err := storage.NewClient(ctx, option.WithCredentialsFile("path/to/your/credentials.json"))
+//	if err != nil {
+//		return fmt.Errorf("storage.NewClient: %v", err)
+//	}
+//	defer client.Close()
+//
+//	// Open the local file
+//	file, err := os.Open(filePath)
+//	if err != nil {
+//		return fmt.Errorf("os.Open: %v", err)
+//	}
+//	defer file.Close()
+//
+//	// Get the bucket object where the file will be uploaded
+//	bucket := client.Bucket(bucketName)
+//
+//	// Create a writer for the GCS object (file)
+//	obj := bucket.Object(objectName)
+//	writer := obj.NewWriter(ctx)
+//
+//	// Stream the file data to GCS
+//	if _, err := io.Copy(writer, file); err != nil {
+//		return fmt.Errorf("io.Copy: %v", err)
+//	}
+//
+//	// Close the writer and finalize the file upload
+//	if err := writer.Close(); err != nil {
+//		return fmt.Errorf("Writer.Close: %v", err)
+//	}
+//
+//	log.Printf("File %s uploaded to bucket %s as %s\n", filePath, bucketName, objectName)
+//	return nil
+//}
+
+func getBestAttemptIndex(results []inspectResult) int {
+	//panic("well, laugh.")
+	bestResult := 0
+	for i, v := range results {
+		if v.NumberOfPages > results[bestResult].NumberOfPages {
+			continue
+		}
+		if v.LastPageContentRatio < results[bestResult].LastPageContentRatio {
+			continue
+		}
+		bestResult = i
+	}
+	return bestResult
 }

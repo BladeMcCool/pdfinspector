@@ -14,6 +14,7 @@ import (
 	_ "image/png" // Importing PNG support
 	"io"
 	"log"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -107,6 +108,7 @@ func main() {
 	http.HandleFunc("/checkjob/", handleJobStatus)
 	http.HandleFunc("/runjob", handJobRun(config))
 	http.HandleFunc("/streamjob", handleStreamJob(config))
+	http.HandleFunc("/joboutput/", handleJobOutput(config))
 
 	fmt.Println("Starting server on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -494,6 +496,57 @@ func handleStreamJob(config *serviceConfig) http.HandlerFunc {
 	}
 }
 
+func handleJobOutput(config *serviceConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("here 1 ...")
+		// Extract the path and split it by '/'
+		pathParts := strings.Split(r.URL.Path, "/")
+		// should become stuff like []string{"","jobresult","somejobid","somepdf"}
+		if len(pathParts) < 4 {
+			http.Error(w, "Invalid path", http.StatusBadRequest)
+			return
+		}
+
+		// Rejoin everything after "/jobresult/"
+		// pathParts[2:] contains everything after "/jobresult/"
+		resultPath := strings.Join(pathParts[2:], "/")
+
+		// Use the rejoined path as needed
+		log.Printf("Result Path: %s\n", resultPath)
+
+		data, err := fs.ReadFile(resultPath)
+		if err != nil {
+			http.Error(w, "Could not read file from GCS", http.StatusBadRequest)
+			return
+		}
+		log.Printf("Read %d bytes of data from GCS", len(data))
+
+		// Infer the Content-Type based on the file extension
+		fileName := pathParts[len(pathParts)-1]
+		log.Printf("Send back with filename: %s\n", fileName)
+		ext := filepath.Ext(fileName)
+		mimeType := mime.TypeByExtension(ext)
+
+		// Fallback to application/octet-stream if we can't determine the MIME type
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+
+		// Set the headers
+		w.Header().Set("Content-Type", mimeType)
+		w.Header().Set("Content-Disposition", "attachment; filename="+fileName)
+		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+
+		// Write the PDF content to the response
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write(data)
+		if err != nil {
+			http.Error(w, "Unable to write file to response", http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
 // parseFlags parses the command line arguments.
 // func parseFlags() (string, string) {
 func parseFlags() string {
@@ -560,7 +613,11 @@ func writeAttemptResumedataJSON(content, layout, style, outputDir string, attemp
 	} else if config.fsType == "gcs" {
 		outputFilePath := fmt.Sprintf("%s/attempt%d.json", outputDir, attemptNum)
 		log.Printf("writeAttemptResumedataJSON to GCS bucket, path: %s", outputFilePath)
-		fs.WriteFile(outputFilePath, []byte(content))
+		err = fs.WriteFile(outputFilePath, []byte(content))
+		if err != nil {
+			log.Printf("Error writing content to file: %v\n", err)
+			return err
+		}
 		log.Printf("writeAttemptResumedataJSON thinks it got past that.")
 	}
 

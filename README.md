@@ -153,3 +153,6 @@ curl --location 'http://localhost:8080/streamjob' --header 'Content-Type: applic
 "baseline":"functional",
 "prompt":"replace the resume data contents with a detailing of fake, but real-sounding functional contributions that relate to the Job Description, while working at fake related companies during the time period 1945 to 1977. education fake and related as well."
 }' --no-buffer -sS
+
+refactor todo/notes:
+no more log.Fatalf in anything the webserver calls!
