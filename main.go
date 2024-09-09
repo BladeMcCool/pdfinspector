@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"github.com/disintegration/imaging"
 	"github.com/google/uuid"
@@ -14,7 +13,6 @@ import (
 	_ "image/png" // Importing PNG support
 	"io"
 	"log"
-	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -23,7 +21,6 @@ import (
 	"path/filepath"
 	"pdfinspector/filesystem"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -55,21 +52,8 @@ var (
 
 	//this stuff that should probably be cli overridable at least, todo.
 	acceptableRatio = 0.88
-	maxAttempts     = 7
+	maxAttempts     = 1
 )
-
-// serviceConfig struct to hold the configuration values
-type serviceConfig struct {
-	gotenbergURL  string
-	jsonServerURL string
-	reactAppURL   string
-	fsType        string
-	mode          string
-	localPath     string
-	gcsBucket     string
-	openAiApiKey  string //oh noes the capitalization *hand waving* guess what? idgaf :) my way.
-	useSystemGs   bool   //in the deployed environment we will bake a gs into the image that runs this part, so we can just use a 'gs' command locally.
-}
 
 // main function: Either runs the web server or executes the main functionality.
 func main() {
@@ -86,15 +70,15 @@ func main() {
 	//gcsBucket := getEnv("GCS_BUCKET", "my-stinky-bucket")
 
 	// Configure filesystem
-	localPath := flag.Lookup("local-path").Value.(flag.Getter).Get().(string)
-	_ = localPath
+	//localPath := flag.Lookup("local-path").Value.(flag.Getter).Get().(string)
+	//_ = localPath
 	//gcsBucket := flag.Lookup("gcs-bucket").Value.(flag.Getter).Get().(string)
 	fs = configureFilesystem(config)
 
 	if config.mode == "cli" {
 		// CLI execution mode
 		fmt.Println("Running main functionality from CLI...")
-		oldMain(fs, config)
+		cliRunJob(fs, config)
 		// Replace the following with your main functionality
 		fmt.Println("Finished Executing main functionality via CLI")
 		return
@@ -104,98 +88,22 @@ func main() {
 	go worker(config)
 
 	// Web server mode
-	http.HandleFunc("/submitjob", handleJobSubmission)
-	http.HandleFunc("/checkjob/", handleJobStatus)
-	http.HandleFunc("/runjob", handJobRun(config))
-	http.HandleFunc("/streamjob", handleStreamJob(config))
-	http.HandleFunc("/joboutput/", handleJobOutput(config))
+	server := newPdfInspectorServer(config)
+	server.RunServer()
 
-	fmt.Println("Starting server on port 8080...")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatalf("Server failed: %v", err)
-	}
-}
-
-// todo: investigate if we can try out that generic stuff so that i dont have to have 2 versions of a function one for string and one for bool.
-// Helper function to get value from CLI args, env vars, or default
-func getConfig(cliValue *string, envVar string, defaultValue string) string {
-	if *cliValue != "" {
-		return *cliValue
-	}
-	if value, exists := os.LookupEnv(envVar); exists {
-		return value
-	}
-	return defaultValue
-}
-func getConfigBool(cliValue *bool, envVar string, defaultValue bool) bool {
-	// First, check if the CLI value is provided
-	if *cliValue {
-		return *cliValue
-	} else if envVal, exists := os.LookupEnv(envVar); exists {
-		// Otherwise, check if the environment variable exists and is parseable as a bool
-		parsedValue, err := strconv.ParseBool(envVal)
-		if err != nil {
-			return defaultValue
-		}
-		return parsedValue
-	}
-
-	// If neither is provided, return the default value
-	return defaultValue
-}
-
-// getServiceConfig function to return a pointer to serviceConfig
-func getServiceConfig() *serviceConfig {
-	// Define CLI flags
-	gotenbergURL := flag.String("gotenberg-url", "", "URL for Gotenberg service")
-	jsonServerURL := flag.String("json-server-url", "", "URL for JSON server")
-	reactAppURL := flag.String("react-app-url", "", "URL for React app")
-	gcsBucket := flag.String("gcs-bucket", "", "File system type (local or gcs)")
-	openAiApiKey := flag.String("api-key", "", "OpenAI API Key")
-	localPath := flag.String("local-path", "", "Mode of the application (server or cli)")
-	fstype := flag.String("fstype", "", "File system type (local or gcs)")
-	mode := flag.String("mode", "", "Mode of the application (server or cli)")
-	useSystemGs := flag.Bool("use-system-gs", false, "Use GhostScript from the system instead of via docker run")
-
-	// Parse CLI flags
-	flag.Parse()
-
-	//var useSystemGsEnvVar
-	//useSystemGsX, err := strconv.ParseBool(getConfig(useSystemGs, "USE_SYSTEM_GS", "false"))
-	//if err == nil {
-	//	log.Fatalf("%v", err)
+	//http.HandleFunc("/submitjob", handleJobSubmission)
+	//http.HandleFunc("/checkjob/", handleJobStatus)
+	//http.HandleFunc("/runjob", handJobRun(config))
+	//http.HandleFunc("/streamjob", handleStreamJob(config))
+	//http.HandleFunc("/joboutput/", handleJobOutput(config))
+	//
+	//fmt.Println("Starting server on port 8080...")
+	//if err := http.ListenAndServe(":8080", nil); err != nil {
+	//	log.Fatalf("Server failed: %v", err)
 	//}
-	//, // Default to "server"
-
-	// Populate the serviceConfig struct
-	config := &serviceConfig{
-		gotenbergURL:  getConfig(gotenbergURL, "GOTENBERG_URL", "http://localhost:80"),
-		jsonServerURL: getConfig(jsonServerURL, "JSON_SERVER_URL", "http://localhost:3002"),
-		reactAppURL:   getConfig(reactAppURL, "REACT_APP_URL", "http://host.docker.internal:3000"),
-		openAiApiKey:  getConfig(openAiApiKey, "OPENAI_API_KEY", ""),
-		fsType:        getConfig(fstype, "FSTYPE", "gcs"),
-		gcsBucket:     getConfig(gcsBucket, "GCS_BUCKET", "my-stinky-bucket"),
-		localPath:     getConfig(localPath, "LOCAL_PATH", "output"),
-		mode:          getConfig(mode, "MODE", "server"), // Default to "server"
-		useSystemGs:   getConfigBool(useSystemGs, "USE_SYSTEM_GS", true),
-	}
-
-	//Validation
-	if config.fsType == "gcs" && config.gcsBucket == "" {
-		log.Fatal("GCS bucket name must be specified for GCS filesystem")
-	}
-
-	if config.fsType == "local" && config.localPath == "" {
-		log.Fatal("Local path must be specified for local filesystem")
-	}
-	if config.openAiApiKey == "" {
-		log.Fatal("An Open AI (what a misnomer lol) API Key is required for the server to be able to do anything interesting.")
-	}
-
-	return config
 }
 
-func oldMain(fs filesystem.FileSystem, config *serviceConfig) {
+func cliRunJob(fs filesystem.FileSystem, config *serviceConfig) {
 
 	// Example call to ReadInput
 	inputDir := "input" // The directory where jd.txt and expect_response.json are located
@@ -267,13 +175,6 @@ func worker(config *serviceConfig) {
 	}
 }
 
-func sendJobUpdate(updates chan JobStatus, message string) {
-	if updates == nil {
-		return
-	}
-	updates <- JobStatus{Message: message}
-}
-
 func runJob(job *Job, config *serviceConfig, updates chan JobStatus) {
 	defer close(updates)
 	//mu.Lock()
@@ -339,236 +240,237 @@ func runJob(job *Job, config *serviceConfig, updates chan JobStatus) {
 	//}
 }
 
-// handleJobSubmission handles incoming job submissions via POST.
-func handleJobSubmission(w http.ResponseWriter, r *http.Request) {
-	log.Println("here in handleJobSubmission")
-	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var job Job
-	if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
-		http.Error(w, "Invalid JSON input", http.StatusBadRequest)
-		return
-	}
-	log.Printf("here in handleJobSubmission with job like: %#v", job)
-
-	//// Add job to queue
-	job.Id = uuid.New()
-	jobQueue <- job
-
-	// Respond with a job URL
-	jobURL := fmt.Sprintf("/checkjob/%d", 12345)
-	w.WriteHeader(http.StatusAccepted)
-	w.Write([]byte(fmt.Sprintf("Job submitted successfully. Poll job status at: %s", jobURL)))
-}
-
-// handleJobStatus handles checking job status via GET.
-func handleJobStatus(w http.ResponseWriter, r *http.Request) {
-	jobIDStr := r.URL.Path[len("/checkjob/"):]
-	jobID, err := strconv.Atoi(jobIDStr)
-	if err != nil {
-		http.Error(w, "Invalid job ID", http.StatusBadRequest)
-		return
-	}
-
-	_ = jobID
-	log.Printf("NYI: checking of job results via http")
-	jobResult := &JobResult{}
-	//jobResult, err := fs.ReadFile(jobID)
-	//if err != nil {
-	//	http.Error(w, "Job not found", http.StatusNotFound)
-	//	return
-	//}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(jobResult)
-}
-
-// handJobRun keep the connection going for the life of the job (try stuff in google cloud run)
-func handJobRun(config *serviceConfig) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		log.Println("here in handJobRun")
-		if r.Method != http.MethodPost {
-			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		var job Job
-		if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
-			http.Error(w, "Invalid JSON input", http.StatusBadRequest)
-			return
-		}
-		log.Printf("here in handJobRun with job like: %#v", job)
-
-		//// Add job to queue
-		job.Id = uuid.New()
-		runJob(&job, config, nil)
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("Job complete. Maybe I could give pdf data")))
-	}
-}
-
-func handleStreamJob(config *serviceConfig) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		log.Println("here in handleStreamJob")
-		if r.Method != http.MethodPost {
-			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		var job Job
-		if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
-			http.Error(w, "Invalid JSON input", http.StatusBadRequest)
-			return
-		}
-		log.Printf("here in handJobRun with job like: %#v", job)
-
-		// Set headers for streaming response
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Transfer-Encoding", "chunked")
-		w.WriteHeader(http.StatusOK)
-
-		// Create a channel to communicate job status updates
-		statusChan := make(chan JobStatus)
-
-		//// Add job to queue
-		job.Id = uuid.New()
-		go runJob(&job, config, statusChan)
-		// Goroutine simulating a background job that sends status updates to the channel
-		//go func() {
-		//	for i := 0; i < 500; i++ {
-		//		message := fmt.Sprintf("Processing step %d...", i+1)
-		//		sendJobUpdate(statusChan, message)
-		//		time.Sleep(10 * time.Millisecond) // Simulate work being done
-		//		log.Printf("here in fakey %s", message)
-		//	}
-		//	close(statusChan)
-		//}()
-
-		// Stream status updates to the client
-		for status := range statusChan {
-			// Create a JobStatus struct with the status message
-
-			// Marshal the status update to JSON
-			data, err := json.Marshal(status)
-			if err != nil {
-				http.Error(w, "Error encoding status", http.StatusInternalServerError)
-				return
-			}
-
-			// Write the JSON status update to the response
-			_, err = fmt.Fprintf(w, "%s\n", data)
-			if err != nil {
-				log.Println("Client connection lost.")
-				return
-			}
-
-			// Flush the response writer to ensure the data is sent immediately
-			if f, ok := w.(http.Flusher); ok {
-				log.Println("here flusho1")
-				f.Flush()
-			}
-		}
-
-		// Final result after job completion
-		finalResult := Result{
-			Status:  "Completed",
-			Details: "The job was successfully completed.",
-		}
-
-		// Marshal the final result to JSON
-		finalData, err := json.Marshal(finalResult)
-		if err != nil {
-			http.Error(w, "Error encoding final result", http.StatusInternalServerError)
-			return
-		}
-
-		// Send the final JSON result to the client
-		fmt.Fprintf(w, "%s\n", finalData)
-
-		// Flush final response to the client
-		if f, ok := w.(http.Flusher); ok {
-			log.Println("here flusho2")
-			f.Flush()
-		}
-	}
-}
-
-func handleJobOutput(config *serviceConfig) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("here 1 ...")
-		// Extract the path and split it by '/'
-		pathParts := strings.Split(r.URL.Path, "/")
-		// should become stuff like []string{"","jobresult","somejobid","somepdf"}
-		if len(pathParts) < 4 {
-			http.Error(w, "Invalid path", http.StatusBadRequest)
-			return
-		}
-
-		// Rejoin everything after "/jobresult/"
-		// pathParts[2:] contains everything after "/jobresult/"
-		resultPath := strings.Join(pathParts[2:], "/")
-
-		// Use the rejoined path as needed
-		log.Printf("Result Path: %s\n", resultPath)
-
-		data, err := fs.ReadFile(resultPath)
-		if err != nil {
-			http.Error(w, "Could not read file from GCS", http.StatusBadRequest)
-			return
-		}
-		log.Printf("Read %d bytes of data from GCS", len(data))
-
-		// Infer the Content-Type based on the file extension
-		fileName := pathParts[len(pathParts)-1]
-		log.Printf("Send back with filename: %s\n", fileName)
-		ext := filepath.Ext(fileName)
-		mimeType := mime.TypeByExtension(ext)
-
-		// Fallback to application/octet-stream if we can't determine the MIME type
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
-		}
-
-		// Set the headers
-		w.Header().Set("Content-Type", mimeType)
-		w.Header().Set("Content-Disposition", "attachment; filename="+fileName)
-		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-
-		// Write the PDF content to the response
-		w.WriteHeader(http.StatusOK)
-		_, err = w.Write(data)
-		if err != nil {
-			http.Error(w, "Unable to write file to response", http.StatusInternalServerError)
-			return
-		}
-	}
-}
-
-// parseFlags parses the command line arguments.
-// func parseFlags() (string, string) {
-func parseFlags() string {
-	mode := flag.String("mode", "server", "Mode: either 'server' or 'cli'")
-	//fsType := flag.String("fs", "local", "Filesystem type: 'local' or 'gcs'")
-	//localPath := flag.String("local-path", "./jobs", "Local file path for job storage (only for 'local' filesystem)")
-	//gcsBucket := flag.String("gcs-bucket", "", "GCS bucket name for job storage (only for 'gcs' filesystem)")
-
-	flag.Parse()
-
-	// Validation
-	//if *fsType == "gcs" && *gcsBucket == "" {
-	//	log.Fatal("GCS bucket name must be specified for GCS filesystem")
-	//}
-	//
-	//if *fsType == "local" && *localPath == "" {
-	//	log.Fatal("Local path must be specified for local filesystem")
-	//}
-	//
-	//return *mode, *fsType
-	return *mode
-}
+//
+//// handleJobSubmission handles incoming job submissions via POST.
+//func handleJobSubmission(w http.ResponseWriter, r *http.Request) {
+//	log.Println("here in handleJobSubmission")
+//	if r.Method != http.MethodPost {
+//		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+//		return
+//	}
+//
+//	var job Job
+//	if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
+//		http.Error(w, "Invalid JSON input", http.StatusBadRequest)
+//		return
+//	}
+//	log.Printf("here in handleJobSubmission with job like: %#v", job)
+//
+//	//// Add job to queue
+//	job.Id = uuid.New()
+//	jobQueue <- job
+//
+//	// Respond with a job URL
+//	jobURL := fmt.Sprintf("/checkjob/%d", 12345)
+//	w.WriteHeader(http.StatusAccepted)
+//	w.Write([]byte(fmt.Sprintf("Job submitted successfully. Poll job status at: %s", jobURL)))
+//}
+//
+//// handleJobStatus handles checking job status via GET.
+//func handleJobStatus(w http.ResponseWriter, r *http.Request) {
+//	jobIDStr := r.URL.Path[len("/checkjob/"):]
+//	jobID, err := strconv.Atoi(jobIDStr)
+//	if err != nil {
+//		http.Error(w, "Invalid job ID", http.StatusBadRequest)
+//		return
+//	}
+//
+//	_ = jobID
+//	log.Printf("NYI: checking of job results via http")
+//	jobResult := &JobResult{}
+//	//jobResult, err := fs.ReadFile(jobID)
+//	//if err != nil {
+//	//	http.Error(w, "Job not found", http.StatusNotFound)
+//	//	return
+//	//}
+//
+//	w.Header().Set("Content-Type", "application/json")
+//	json.NewEncoder(w).Encode(jobResult)
+//}
+//
+//// handJobRun keep the connection going for the life of the job (try stuff in google cloud run)
+//func handJobRun(config *serviceConfig) http.HandlerFunc {
+//	return func(w http.ResponseWriter, r *http.Request) {
+//		log.Println("here in handJobRun")
+//		if r.Method != http.MethodPost {
+//			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+//			return
+//		}
+//
+//		var job Job
+//		if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
+//			http.Error(w, "Invalid JSON input", http.StatusBadRequest)
+//			return
+//		}
+//		log.Printf("here in handJobRun with job like: %#v", job)
+//
+//		//// Add job to queue
+//		job.Id = uuid.New()
+//		runJob(&job, config, nil)
+//		w.WriteHeader(http.StatusOK)
+//		w.Write([]byte(fmt.Sprintf("Job complete. Maybe I could give pdf data")))
+//	}
+//}
+//
+//func handleStreamJob(config *serviceConfig) http.HandlerFunc {
+//	return func(w http.ResponseWriter, r *http.Request) {
+//		log.Println("here in handleStreamJob")
+//		if r.Method != http.MethodPost {
+//			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+//			return
+//		}
+//
+//		var job Job
+//		if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
+//			http.Error(w, "Invalid JSON input", http.StatusBadRequest)
+//			return
+//		}
+//		log.Printf("here in handJobRun with job like: %#v", job)
+//
+//		// Set headers for streaming response
+//		w.Header().Set("Content-Type", "application/json")
+//		w.Header().Set("Transfer-Encoding", "chunked")
+//		w.WriteHeader(http.StatusOK)
+//
+//		// Create a channel to communicate job status updates
+//		statusChan := make(chan JobStatus)
+//
+//		//// Add job to queue
+//		job.Id = uuid.New()
+//		go runJob(&job, config, statusChan)
+//		// Goroutine simulating a background job that sends status updates to the channel
+//		//go func() {
+//		//	for i := 0; i < 500; i++ {
+//		//		message := fmt.Sprintf("Processing step %d...", i+1)
+//		//		sendJobUpdate(statusChan, message)
+//		//		time.Sleep(10 * time.Millisecond) // Simulate work being done
+//		//		log.Printf("here in fakey %s", message)
+//		//	}
+//		//	close(statusChan)
+//		//}()
+//
+//		// Stream status updates to the client
+//		for status := range statusChan {
+//			// Create a JobStatus struct with the status message
+//
+//			// Marshal the status update to JSON
+//			data, err := json.Marshal(status)
+//			if err != nil {
+//				http.Error(w, "Error encoding status", http.StatusInternalServerError)
+//				return
+//			}
+//
+//			// Write the JSON status update to the response
+//			_, err = fmt.Fprintf(w, "%s\n", data)
+//			if err != nil {
+//				log.Println("Client connection lost.")
+//				return
+//			}
+//
+//			// Flush the response writer to ensure the data is sent immediately
+//			if f, ok := w.(http.Flusher); ok {
+//				log.Println("here flusho1")
+//				f.Flush()
+//			}
+//		}
+//
+//		// Final result after job completion
+//		finalResult := Result{
+//			Status:  "Completed",
+//			Details: "The job was successfully completed.",
+//		}
+//
+//		// Marshal the final result to JSON
+//		finalData, err := json.Marshal(finalResult)
+//		if err != nil {
+//			http.Error(w, "Error encoding final result", http.StatusInternalServerError)
+//			return
+//		}
+//
+//		// Send the final JSON result to the client
+//		fmt.Fprintf(w, "%s\n", finalData)
+//
+//		// Flush final response to the client
+//		if f, ok := w.(http.Flusher); ok {
+//			log.Println("here flusho2")
+//			f.Flush()
+//		}
+//	}
+//}
+//
+//func handleJobOutput(config *serviceConfig) http.HandlerFunc {
+//	return func(w http.ResponseWriter, r *http.Request) {
+//		log.Printf("here 1 ...")
+//		// Extract the path and split it by '/'
+//		pathParts := strings.Split(r.URL.Path, "/")
+//		// should become stuff like []string{"","jobresult","somejobid","somepdf"}
+//		if len(pathParts) < 4 {
+//			http.Error(w, "Invalid path", http.StatusBadRequest)
+//			return
+//		}
+//
+//		// Rejoin everything after "/jobresult/"
+//		// pathParts[2:] contains everything after "/jobresult/"
+//		resultPath := strings.Join(pathParts[2:], "/")
+//
+//		// Use the rejoined path as needed
+//		log.Printf("Result Path: %s\n", resultPath)
+//
+//		data, err := fs.ReadFile(resultPath)
+//		if err != nil {
+//			http.Error(w, "Could not read file from GCS", http.StatusBadRequest)
+//			return
+//		}
+//		log.Printf("Read %d bytes of data from GCS", len(data))
+//
+//		// Infer the Content-Type based on the file extension
+//		fileName := pathParts[len(pathParts)-1]
+//		log.Printf("Send back with filename: %s\n", fileName)
+//		ext := filepath.Ext(fileName)
+//		mimeType := mime.TypeByExtension(ext)
+//
+//		// Fallback to application/octet-stream if we can't determine the MIME type
+//		if mimeType == "" {
+//			mimeType = "application/octet-stream"
+//		}
+//
+//		// Set the headers
+//		w.Header().Set("Content-Type", mimeType)
+//		w.Header().Set("Content-Disposition", "attachment; filename="+fileName)
+//		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+//
+//		// Write the PDF content to the response
+//		w.WriteHeader(http.StatusOK)
+//		_, err = w.Write(data)
+//		if err != nil {
+//			http.Error(w, "Unable to write file to response", http.StatusInternalServerError)
+//			return
+//		}
+//	}
+//}
+//
+//// parseFlags parses the command line arguments.
+//// func parseFlags() (string, string) {
+//func parseFlags() string {
+//	mode := flag.String("mode", "server", "Mode: either 'server' or 'cli'")
+//	//fsType := flag.String("fs", "local", "Filesystem type: 'local' or 'gcs'")
+//	//localPath := flag.String("local-path", "./jobs", "Local file path for job storage (only for 'local' filesystem)")
+//	//gcsBucket := flag.String("gcs-bucket", "", "GCS bucket name for job storage (only for 'gcs' filesystem)")
+//
+//	flag.Parse()
+//
+//	// Validation
+//	//if *fsType == "gcs" && *gcsBucket == "" {
+//	//	log.Fatal("GCS bucket name must be specified for GCS filesystem")
+//	//}
+//	//
+//	//if *fsType == "local" && *localPath == "" {
+//	//	log.Fatal("Local path must be specified for local filesystem")
+//	//}
+//	//
+//	//return *mode, *fsType
+//	return *mode
+//}
 
 // configureFilesystem sets up the filesystem based on the command line flags.
 func configureFilesystem(config *serviceConfig) filesystem.FileSystem {
@@ -1381,67 +1283,68 @@ func decodeJSON(data string) (interface{}, error) {
 	return result, nil
 }
 
-// cleanAndValidateJSON takes MJS file contents as a string, strips non-JSON content
-// on the first line, removes double-slash comment lines, and validates the resulting JSON.
-func cleanAndValidateJSON(mjsContent string) (string, error) {
-	lines := strings.Split(mjsContent, "\n")
-
-	// Step 1: Remove lines that contain double-slash comments
-	var cleanedLines []string
-	for _, line := range lines {
-		trimmedLine := strings.TrimSpace(line)
-		if len(trimmedLine) == 0 {
-			continue
-		}
-		if strings.HasPrefix(trimmedLine, "//") {
-			continue
-		} else if commentIndex := findCommentIndex(line); commentIndex != -1 {
-			// Take the part of the line before the comment and add it to cleanedLines
-			cleanedLines = append(cleanedLines, line[:commentIndex])
-		} else {
-			cleanedLines = append(cleanedLines, line)
-		}
-	}
-
-	// Step 2: Process the first line to strip non-JSON content
-	if len(lines) > 0 {
-		firstLine := cleanedLines[0]
-		// Use strings.Index to find the first occurrence of '{' and remove everything before it
-		if index := strings.Index(firstLine, "{"); index != -1 {
-			cleanedLines[0] = firstLine[index:]
-		} else {
-			return "", fmt.Errorf("no JSON object found on the first line (line looks like: '%s')", firstLine)
-		}
-	}
-
-	// Step 3: Join the cleaned lines back into a single string
-	cleanedJSON := strings.Join(cleanedLines, "\n")
-	fmt.Printf("working with :\n\n'%s'", cleanedJSON)
-	//panic("stop wut")
-
-	// Step 4: Validate the resulting string as JSON
-	var js map[string]interface{}
-	if err := json.Unmarshal([]byte(cleanedJSON), &js); err != nil {
-		return "", fmt.Errorf("invalid JSON: %v", err)
-	}
-
-	// Step 5: Return the cleaned and validated JSON string
-	return cleanedJSON, nil
-}
-
-// findCommentIndex finds the index of "//" that is not within a string
-func findCommentIndex(line string) int {
-	inString := false
-	for i := 0; i < len(line)-1; i++ {
-		if line[i] == '"' {
-			inString = !inString
-		}
-		if !inString && line[i] == '/' && line[i+1] == '/' {
-			return i
-		}
-	}
-	return -1
-}
+//
+//// cleanAndValidateJSON takes MJS file contents as a string, strips non-JSON content
+//// on the first line, removes double-slash comment lines, and validates the resulting JSON.
+//func cleanAndValidateJSON(mjsContent string) (string, error) {
+//	lines := strings.Split(mjsContent, "\n")
+//
+//	// Step 1: Remove lines that contain double-slash comments
+//	var cleanedLines []string
+//	for _, line := range lines {
+//		trimmedLine := strings.TrimSpace(line)
+//		if len(trimmedLine) == 0 {
+//			continue
+//		}
+//		if strings.HasPrefix(trimmedLine, "//") {
+//			continue
+//		} else if commentIndex := findCommentIndex(line); commentIndex != -1 {
+//			// Take the part of the line before the comment and add it to cleanedLines
+//			cleanedLines = append(cleanedLines, line[:commentIndex])
+//		} else {
+//			cleanedLines = append(cleanedLines, line)
+//		}
+//	}
+//
+//	// Step 2: Process the first line to strip non-JSON content
+//	if len(lines) > 0 {
+//		firstLine := cleanedLines[0]
+//		// Use strings.Index to find the first occurrence of '{' and remove everything before it
+//		if index := strings.Index(firstLine, "{"); index != -1 {
+//			cleanedLines[0] = firstLine[index:]
+//		} else {
+//			return "", fmt.Errorf("no JSON object found on the first line (line looks like: '%s')", firstLine)
+//		}
+//	}
+//
+//	// Step 3: Join the cleaned lines back into a single string
+//	cleanedJSON := strings.Join(cleanedLines, "\n")
+//	fmt.Printf("working with :\n\n'%s'", cleanedJSON)
+//	//panic("stop wut")
+//
+//	// Step 4: Validate the resulting string as JSON
+//	var js map[string]interface{}
+//	if err := json.Unmarshal([]byte(cleanedJSON), &js); err != nil {
+//		return "", fmt.Errorf("invalid JSON: %v", err)
+//	}
+//
+//	// Step 5: Return the cleaned and validated JSON string
+//	return cleanedJSON, nil
+//}
+//
+//// findCommentIndex finds the index of "//" that is not within a string
+//func findCommentIndex(line string) int {
+//	inString := false
+//	for i := 0; i < len(line)-1; i++ {
+//		if line[i] == '"' {
+//			inString = !inString
+//		}
+//		if !inString && line[i] == '/' && line[i+1] == '/' {
+//			return i
+//		}
+//	}
+//	return -1
+//}
 
 func contentRatio(img image.Image) float64 {
 	// Get image dimensions
@@ -1470,32 +1373,33 @@ func contentRatio(img image.Image) float64 {
 	return lastContentAt
 }
 
-func whitePct(img image.Image) float64 {
-	// Get image dimensions
-	bounds := img.Bounds()
-	totalPixels := bounds.Dx() * bounds.Dy()
-
-	// Count white pixels
-	whitePixels := 0
-	pixels := 0
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			r, g, b, a := img.At(x, y).RGBA()
-			pixels++
-			if isWhite(r, g, b, a) {
-				whitePixels++
-			}
-		}
-	}
-
-	// Calculate percentage of white space
-	whiteSpacePercentage := (float64(whitePixels) / float64(totalPixels)) * 100
-
-	fmt.Printf("White space percentage: %.2f%%\n", whiteSpacePercentage)
-	fmt.Printf("Checked pixels: : %d\n", pixels)
-
-	return whiteSpacePercentage
-}
+//
+//func whitePct(img image.Image) float64 {
+//	// Get image dimensions
+//	bounds := img.Bounds()
+//	totalPixels := bounds.Dx() * bounds.Dy()
+//
+//	// Count white pixels
+//	whitePixels := 0
+//	pixels := 0
+//	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+//		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+//			r, g, b, a := img.At(x, y).RGBA()
+//			pixels++
+//			if isWhite(r, g, b, a) {
+//				whitePixels++
+//			}
+//		}
+//	}
+//
+//	// Calculate percentage of white space
+//	whiteSpacePercentage := (float64(whitePixels) / float64(totalPixels)) * 100
+//
+//	fmt.Printf("White space percentage: %.2f%%\n", whiteSpacePercentage)
+//	fmt.Printf("Checked pixels: : %d\n", pixels)
+//
+//	return whiteSpacePercentage
+//}
 
 func isColored(r, g, b, a uint32) bool {
 	const color_threshold = 0.9 * 0xffff //idk, using a threshold was a robots idea, seemed reasonable -- but also probably not neccesary. using 1.0 (eg not using it) gives a similar result.
@@ -1508,9 +1412,9 @@ func isColored(r, g, b, a uint32) bool {
 	return float64(a) > alpha_threshold && float64(r) <= color_threshold && float64(g) <= color_threshold && float64(b) <= color_threshold
 }
 
-func isWhite(r, g, b, a uint32) bool {
-	const threshold = 0.9 * 0xffff //idk, using a threshold was a robots idea, seemed reasonable -- but also probably not neccesary. using 1.0 (eg not using it) gives a similar result.
-	//also .... transparent with no color == white when on screen as a pdf so ....
-	//return a > 0 && float64(r) >= threshold && float64(g) >= threshold && float64(b) >= threshold
-	return a == 0 || float64(r) >= threshold && float64(g) >= threshold && float64(b) >= threshold
-}
+//func isWhite(r, g, b, a uint32) bool {
+//	const threshold = 0.9 * 0xffff //idk, using a threshold was a robots idea, seemed reasonable -- but also probably not neccesary. using 1.0 (eg not using it) gives a similar result.
+//	//also .... transparent with no color == white when on screen as a pdf so ....
+//	//return a > 0 && float64(r) >= threshold && float64(g) >= threshold && float64(b) >= threshold
+//	return a == 0 || float64(r) >= threshold && float64(g) >= threshold && float64(b) >= threshold
+//}

@@ -253,7 +253,14 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 	}
 	log.Printf("saveBestAttemptToGCS believed to be complete")
 	//todo: get the host name into the message below. should be able to get it from the http request ... can pass it down perhaps.
-	sendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: /joboutput/%s", len(data), outputFilePath))
+	sendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: %s/joboutput/%s", len(data), config.serviceUrl, outputFilePath))
+}
+
+func sendJobUpdate(updates chan JobStatus, message string) {
+	if updates == nil {
+		return
+	}
+	updates <- JobStatus{Message: message}
 }
 
 //func uploadFileToGCS(bucketName, objectName, filePath string) error {

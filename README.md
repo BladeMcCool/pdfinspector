@@ -156,3 +156,15 @@ curl --location 'http://localhost:8080/streamjob' --header 'Content-Type: applic
 
 refactor todo/notes:
 no more log.Fatalf in anything the webserver calls!
+
+we have a few things goin on
+- web server with config
+- environment vars and config handling
+- cli mode
+- resume tuner
+- job runner
+- filesystem type
+- gs executor
+- pdf data aquisitor / acquirer
+- jsondata placer
+- pdf data retriever
