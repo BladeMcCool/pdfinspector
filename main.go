@@ -106,6 +106,7 @@ func main() {
 	http.HandleFunc("/submitjob", handleJobSubmission)
 	http.HandleFunc("/checkjob/", handleJobStatus)
 	http.HandleFunc("/runjob", handJobRun(config))
+	http.HandleFunc("/streamjob", handleStreamJob(config))
 
 	fmt.Println("Starting server on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -242,20 +243,37 @@ func oldMain(fs filesystem.FileSystem, config *serviceConfig) {
 	}
 
 	//todo: fix this calls arguments it should probably just be one struct.
-	err = tuneResumeContents(input, mainPrompt, baselineJSON, layout, style, outputDir, acceptableRatio, maxAttempts, fs, config, &Job{})
+	err = tuneResumeContents(input, mainPrompt, baselineJSON, layout, style, outputDir, acceptableRatio, maxAttempts, fs, config, &Job{}, nil)
 	if err != nil {
 		log.Fatalf("Error from resume tuning: %v", err)
 	}
 }
 
+type Result struct {
+	Status  string `json:"status"`
+	Details string `json:"details"`
+}
+
+type JobStatus struct {
+	Message string `json:"message"`
+}
+
 // worker simulates a worker that processes jobs.
 func worker(config *serviceConfig) {
 	for job := range jobQueue {
-		runJob(&job, config)
+		runJob(&job, config, nil)
 	}
 }
 
-func runJob(job *Job, config *serviceConfig) {
+func sendJobUpdate(updates chan JobStatus, message string) {
+	if updates == nil {
+		return
+	}
+	updates <- JobStatus{Message: message}
+}
+
+func runJob(job *Job, config *serviceConfig, updates chan JobStatus) {
+	defer close(updates)
 	//mu.Lock()
 	//jobID := jobIDCounter
 	//jobIDCounter++
@@ -271,6 +289,7 @@ func runJob(job *Job, config *serviceConfig) {
 			log.Fatalf("error from reading baseline JSON: %v", err)
 		}
 	}
+	sendJobUpdate(updates, "got baseline JSON")
 
 	layout, style, err := getLayoutFromBaselineJSON(baselineJSON)
 	if err != nil {
@@ -301,7 +320,7 @@ func runJob(job *Job, config *serviceConfig) {
 	}
 
 	//todo: fix this calls arguments it should probably just be one struct.
-	err = tuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, job.Id.String(), acceptableRatio, maxAttempts, fs, config, job)
+	err = tuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, job.Id.String(), acceptableRatio, maxAttempts, fs, config, job, updates)
 	if err != nil {
 		log.Fatalf("Error from resume tuning: %v", err)
 	}
@@ -383,9 +402,95 @@ func handJobRun(config *serviceConfig) http.HandlerFunc {
 
 		//// Add job to queue
 		job.Id = uuid.New()
-		runJob(&job, config)
+		runJob(&job, config, nil)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(fmt.Sprintf("Job complete. Maybe I could give pdf data")))
+	}
+}
+
+func handleStreamJob(config *serviceConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("here in handleStreamJob")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var job Job
+		if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
+			http.Error(w, "Invalid JSON input", http.StatusBadRequest)
+			return
+		}
+		log.Printf("here in handJobRun with job like: %#v", job)
+
+		// Set headers for streaming response
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Transfer-Encoding", "chunked")
+		w.WriteHeader(http.StatusOK)
+
+		// Create a channel to communicate job status updates
+		statusChan := make(chan JobStatus)
+
+		//// Add job to queue
+		job.Id = uuid.New()
+		go runJob(&job, config, statusChan)
+		// Goroutine simulating a background job that sends status updates to the channel
+		//go func() {
+		//	for i := 0; i < 500; i++ {
+		//		message := fmt.Sprintf("Processing step %d...", i+1)
+		//		sendJobUpdate(statusChan, message)
+		//		time.Sleep(10 * time.Millisecond) // Simulate work being done
+		//		log.Printf("here in fakey %s", message)
+		//	}
+		//	close(statusChan)
+		//}()
+
+		// Stream status updates to the client
+		for status := range statusChan {
+			// Create a JobStatus struct with the status message
+
+			// Marshal the status update to JSON
+			data, err := json.Marshal(status)
+			if err != nil {
+				http.Error(w, "Error encoding status", http.StatusInternalServerError)
+				return
+			}
+
+			// Write the JSON status update to the response
+			_, err = fmt.Fprintf(w, "%s\n", data)
+			if err != nil {
+				log.Println("Client connection lost.")
+				return
+			}
+
+			// Flush the response writer to ensure the data is sent immediately
+			if f, ok := w.(http.Flusher); ok {
+				log.Println("here flusho1")
+				f.Flush()
+			}
+		}
+
+		// Final result after job completion
+		finalResult := Result{
+			Status:  "Completed",
+			Details: "The job was successfully completed.",
+		}
+
+		// Marshal the final result to JSON
+		finalData, err := json.Marshal(finalResult)
+		if err != nil {
+			http.Error(w, "Error encoding final result", http.StatusInternalServerError)
+			return
+		}
+
+		// Send the final JSON result to the client
+		fmt.Fprintf(w, "%s\n", finalData)
+
+		// Flush final response to the client
+		if f, ok := w.(http.Flusher); ok {
+			log.Println("here flusho2")
+			f.Flush()
+		}
 	}
 }
 

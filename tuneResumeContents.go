@@ -9,7 +9,8 @@ import (
 	"strings"
 )
 
-func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, outputDir string, acceptableRatio float64, maxAttempts int, fs filesystem.FileSystem, config *serviceConfig, job *Job) error {
+func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, outputDir string, acceptableRatio float64, maxAttempts int, fs filesystem.FileSystem, config *serviceConfig, job *Job, updates chan JobStatus) error {
+	sendJobUpdate(updates, "getting any JD meta")
 	jDmetaRawJSON, err := takeNotesOnJD(input, outputDir)
 	if err != nil {
 		log.Println("error taking notes on JD: ", err)
@@ -21,6 +22,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 		log.Println("error extracting notes on JD: ", err)
 		return err
 	}
+	sendJobUpdate(updates, "got any JD meta")
 
 	//panic("does it look right - before proceeding")
 	kwPrompt := ""
@@ -98,6 +100,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 			log.Fatalf("Error checking for pre-existing API output: %v", err)
 		}
 		if !exists {
+			sendJobUpdate(updates, fmt.Sprintf("asking for an attempt %d", i))
 			output, err = makeAPIRequest(data, input.APIKey, i, "api_response_raw", outputDir)
 		}
 
@@ -122,6 +125,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 			return err
 		}
 		log.Printf("Got %d bytes of JSON content (at least well formed enough to be decodable) out of that last response\n", len(content))
+		sendJobUpdate(updates, fmt.Sprintf("got JSON for attempt %d, will request PDF", i))
 
 		err = writeAttemptResumedataJSON(content, layout, style, outputDir, i, fs, config)
 
@@ -130,6 +134,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 		if err != nil {
 			log.Printf("Error: %v\n", err)
 		}
+		sendJobUpdate(updates, fmt.Sprintf("got PDF for attempt %d, will dump to PNG", i))
 
 		//and the ghostscript dump to pngs ...
 		err = dumpPDFToPNG(i, outputDir, config)
@@ -137,6 +142,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 			log.Printf("Error during pdf to image dump: %v\n", err)
 			break
 		}
+		sendJobUpdate(updates, fmt.Sprintf("got PNGs for attempt %d, will check it", i))
 
 		result, err := inspectPNGFiles(outputDir, i)
 		if err != nil {
@@ -149,6 +155,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 			log.Printf("no pages, idk just stop")
 			break
 		}
+		sendJobUpdate(updates, fmt.Sprintf("png inspection for attempt %d: %#v", i, result))
 
 		tryNewPrompt := false
 		var tryPrompt string

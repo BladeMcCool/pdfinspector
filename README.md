@@ -147,3 +147,9 @@ gcloud run deploy my-go-app \
 --region us-central1 \
 --allow-unauthenticated \
 --set-env-vars GOTENBERG_URL=https://gotenberg-1025621488749.us-central1.run.app,JSON_SERVER_URL=https://json-server-1025621488749.us-central1.run.app,REACT_APP_URL=https://react-app-1025621488749.us-central1.run.app
+
+curl --location 'http://localhost:8080/streamjob' --header 'Content-Type: application/json' --data '{
+"jd":"crane operator",
+"baseline":"functional",
+"prompt":"replace the resume data contents with a detailing of fake, but real-sounding functional contributions that relate to the Job Description, while working at fake related companies during the time period 1945 to 1977. education fake and related as well."
+}' --no-buffer -sS

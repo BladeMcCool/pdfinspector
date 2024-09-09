@@ -7,5 +7,5 @@ setlocal
 :: Capture start time
 echo Starting build process at %TIME%.
 gcloud builds submit --tag gcr.io/astute-backup-434623-h3/pdfinspector
-echo Deployment successful!
+echo Build successful!
 echo Completed build process at %TIME%.
