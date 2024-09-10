@@ -1,13 +1,14 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	_ "image/png" // Importing PNG support
 	"log"
 	"os"
 	"path/filepath"
-	"pdfinspector/filesystem"
+	"pdfinspector/config"
+	"pdfinspector/job"
+	"pdfinspector/tuner"
 )
 
 // Global variables for job management
@@ -23,7 +24,7 @@ import (
 // main function: Either runs the web server or executes the main functionality.
 func main() {
 	// Get the service configuration
-	config := getServiceConfig()
+	config := config.GetServiceConfig()
 
 	//mode := parseFlags()
 	//log.Printf("mode: %s, fsType: %s", mode, fsType)
@@ -40,7 +41,7 @@ func main() {
 	//gcsBucket := flag.Lookup("gcs-bucket").Value.(flag.Getter).Get().(string)
 	//fs = configureFilesystem(config)
 
-	if config.mode == "cli" {
+	if config.Mode == "cli" {
 		// CLI execution mode
 		fmt.Println("Running main functionality from CLI...")
 		cliRunJob(config)
@@ -69,7 +70,7 @@ func main() {
 	//}
 }
 
-func cliRunJob(config *serviceConfig) {
+func cliRunJob(config *config.ServiceConfig) {
 
 	// Example call to ReadInput
 	inputDir := "input" // The directory where jd.txt and expect_response.json are located
@@ -82,12 +83,12 @@ func cliRunJob(config *serviceConfig) {
 	styleOverride := "fluffy"
 	//styleOverride := ""
 
-	t := newTuner(config)
-	baselineJSON, err := t.getBaselineJSON(baseline)
+	t := tuner.NewTuner(config)
+	baselineJSON, err := t.GetBaselineJSON(baseline)
 	if err != nil {
 		log.Fatalf("error from reading baseline JSON: %v", err)
 	}
-	layout, style, err := t.getLayoutFromBaselineJSON(baselineJSON)
+	layout, style, err := t.GetLayoutFromBaselineJSON(baselineJSON)
 	if err != nil {
 		log.Fatalf("error from extracting layout from baseline JSON: %v", err)
 	}
@@ -95,12 +96,12 @@ func cliRunJob(config *serviceConfig) {
 		style = styleOverride
 	}
 
-	input, err := ReadInput(inputDir)
+	input, err := job.ReadInput(inputDir)
 	if err != nil {
 		log.Fatalf("Error reading input files: %v", err)
 	}
 
-	input.ExpectResponseSchema, err = t.getExpectedResponseJsonSchema(layout)
+	input.ExpectResponseSchema, err = t.GetExpectedResponseJsonSchema(layout)
 	if err != nil {
 		log.Println("error from getExpectedResponseJsonSchema: ", err)
 		return
@@ -112,7 +113,7 @@ func cliRunJob(config *serviceConfig) {
 		return
 	}
 	if mainPrompt == "" {
-		mainPrompt, err = t.getDefaultPrompt(layout)
+		mainPrompt, err = t.GetDefaultPrompt(layout)
 		if err != nil {
 			log.Println("error from reading input prompt: ", err)
 			return
@@ -120,7 +121,7 @@ func cliRunJob(config *serviceConfig) {
 	}
 
 	//todo: fix this calls arguments it should probably just be one struct.
-	err = t.tuneResumeContents(input, mainPrompt, baselineJSON, layout, style, outputDir, t.fs, config, newDefaultJob(), nil)
+	err = t.TuneResumeContents(input, mainPrompt, baselineJSON, layout, style, outputDir, t.Fs, config, job.NewDefaultJob(), nil)
 	if err != nil {
 		log.Fatalf("Error from resume tuning: %v", err)
 	}
@@ -129,10 +130,6 @@ func cliRunJob(config *serviceConfig) {
 type Result struct {
 	Status  string `json:"status"`
 	Details string `json:"details"`
-}
-
-type JobStatus struct {
-	Message string `json:"message"`
 }
 
 // worker simulates a worker that processes jobs.
@@ -442,73 +439,73 @@ type JobStatus struct {
 //	//return *mode, *fsType
 //	return *mode
 //}
-
-func writeAttemptResumedataJSON(content, layout, style, outputDir string, attemptNum int, fs filesystem.FileSystem, config *serviceConfig) error {
-	// Step 5: Write the validated content to the filesystem in a way the resume projects json server can read it, plus locally for posterity.
-	// Assuming the file path is up and outside of the project directory
-	// Example: /home/user/output/validated_content.json
-	updatedContent, err := insertLayout(content, layout, style)
-	if err != nil {
-		log.Printf("Error inserting layout info: %v\n", err)
-		return err
-	}
-
-	//TODO !!!!!!!! dont do this!!!!!! not like this!!!!
-	if config.fsType == "local" {
-		// this is/was just a cheesy way to get the attempted resume updated json available to the react project via a local json server service.
-		outputFilePath := filepath.Join("../ResumeData/resumedata/", fmt.Sprintf("attempt%d.json", attemptNum))
-		err = writeValidatedContent(updatedContent, outputFilePath)
-		if err != nil {
-			log.Printf("Error writing content to file: %v\n", err)
-			return err
-		}
-		log.Println("Content successfully written to:", outputFilePath)
-	} else if config.fsType == "gcs" {
-		outputFilePath := fmt.Sprintf("%s/attempt%d.json", outputDir, attemptNum)
-		log.Printf("writeAttemptResumedataJSON to GCS bucket, path: %s", outputFilePath)
-		err = fs.WriteFile(outputFilePath, []byte(content))
-		if err != nil {
-			log.Printf("Error writing content to file: %v\n", err)
-			return err
-		}
-		log.Printf("writeAttemptResumedataJSON thinks it got past that.")
-	}
-
-	// Example: /home/user/output/validated_content.json
-	localOutfilePath := filepath.Join(outputDir, fmt.Sprintf("attempt%d.json", attemptNum))
-	err = writeValidatedContent(updatedContent, localOutfilePath)
-	if err != nil {
-		log.Printf("Error writing content to file: %v\n", err)
-		return err
-	}
-	log.Println("Content successfully written to:", localOutfilePath)
-	return nil
-}
-
-func insertLayout(content string, layout string, style string) (string, error) {
-	// Step 1: Deserialize the JSON content into a map
-	var data map[string]interface{}
-	err := json.Unmarshal([]byte(content), &data)
-	if err != nil {
-		return "", err
-	}
-
-	// Step 2: Insert the layout into the map
-	data["layout"] = layout
-
-	if style != "" {
-		data["style"] = style
-	}
-
-	// Step 3: Reserialize the map back into a JSON string
-	updatedContent, err := json.Marshal(data)
-	if err != nil {
-		return "", err
-	}
-
-	// Step 4: Return the updated JSON string
-	return string(updatedContent), nil
-}
+//
+//func WriteAttemptResumedataJSON(content, layout, style, outputDir string, attemptNum int, fs filesystem.FileSystem, config *config.ServiceConfig) error {
+//	// Step 5: Write the validated content to the filesystem in a way the resume projects json server can read it, plus locally for posterity.
+//	// Assuming the file path is up and outside of the project directory
+//	// Example: /home/user/output/validated_content.json
+//	updatedContent, err := insertLayout(content, layout, style)
+//	if err != nil {
+//		log.Printf("Error inserting layout info: %v\n", err)
+//		return err
+//	}
+//
+//	//TODO !!!!!!!! dont do this!!!!!! not like this!!!!
+//	if config.FsType == "local" {
+//		// this is/was just a cheesy way to get the attempted resume updated json available to the react project via a local json server service.
+//		outputFilePath := filepath.Join("../ResumeData/resumedata/", fmt.Sprintf("attempt%d.json", attemptNum))
+//		err = tuner.WriteValidatedContent(updatedContent, outputFilePath)
+//		if err != nil {
+//			log.Printf("Error writing content to file: %v\n", err)
+//			return err
+//		}
+//		log.Println("Content successfully written to:", outputFilePath)
+//	} else if config.FsType == "gcs" {
+//		outputFilePath := fmt.Sprintf("%s/attempt%d.json", outputDir, attemptNum)
+//		log.Printf("writeAttemptResumedataJSON to GCS bucket, path: %s", outputFilePath)
+//		err = fs.WriteFile(outputFilePath, []byte(content))
+//		if err != nil {
+//			log.Printf("Error writing content to file: %v\n", err)
+//			return err
+//		}
+//		log.Printf("writeAttemptResumedataJSON thinks it got past that.")
+//	}
+//
+//	// Example: /home/user/output/validated_content.json
+//	localOutfilePath := filepath.Join(outputDir, fmt.Sprintf("attempt%d.json", attemptNum))
+//	err = tuner.WriteValidatedContent(updatedContent, localOutfilePath)
+//	if err != nil {
+//		log.Printf("Error writing content to file: %v\n", err)
+//		return err
+//	}
+//	log.Println("Content successfully written to:", localOutfilePath)
+//	return nil
+//}
+//
+//func insertLayout(content string, layout string, style string) (string, error) {
+//	// Step 1: Deserialize the JSON content into a map
+//	var data map[string]interface{}
+//	err := json.Unmarshal([]byte(content), &data)
+//	if err != nil {
+//		return "", err
+//	}
+//
+//	// Step 2: Insert the layout into the map
+//	data["layout"] = layout
+//
+//	if style != "" {
+//		data["style"] = style
+//	}
+//
+//	// Step 3: Reserialize the map back into a JSON string
+//	updatedContent, err := json.Marshal(data)
+//	if err != nil {
+//		return "", err
+//	}
+//
+//	// Step 4: Return the updated JSON string
+//	return string(updatedContent), nil
+//}
 
 //func getBaselineJSON(baseline string, config *serviceConfig) (string, error) {
 //	// get JSON of the current complete resume including all the hidden stuff, this hits an express server that imports the reactresume resumedata.mjs and outputs it as json.
@@ -806,50 +803,6 @@ func getInputPrompt(directory string) (string, error) {
 //		} `json:"message"`
 //	} `json:"choices"`
 //}
-
-// Input struct to hold the contents of jd.txt and expect_response.json
-type Input struct {
-	InputDir             string
-	JD                   string
-	ExpectResponseSchema interface{}
-	APIKey               string
-}
-
-// ReadInput reads the input files from the "input" directory and returns an Input struct
-func ReadInput(dir string) (*Input, error) {
-	// Define file paths
-	jdFilePath := filepath.Join(dir, "jd.txt")
-	apiKeyFilePath := filepath.Join(dir, "api_key.txt")
-
-	// Read jd.txt
-	jdContent, err := os.ReadFile(jdFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read jd.txt: %v", err)
-	}
-
-	// Retrieve the API key
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		// If the environment variable is not set, try to read it from api_key.txt
-		apiKeyContent, err := os.ReadFile(apiKeyFilePath)
-		if err != nil {
-			return nil, fmt.Errorf("API key not found in environment variable or api_key.txt: %v", err)
-		}
-		apiKey = string(apiKeyContent)
-		log.Println("Got API Key from input text file")
-	} else {
-		log.Println("Got API Key from env var")
-	}
-
-	// Return the populated Input struct
-	return &Input{
-		InputDir: dir,
-		JD:       string(jdContent),
-		//ExpectResponse: string(expectResponseContent),
-		//ExpectResponseSchema: expectResponseSchema,
-		APIKey: apiKey,
-	}, nil
-}
 
 //
 //func getExpectedResponseJsonSchema(layout string) (interface{}, error) {

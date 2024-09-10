@@ -1,4 +1,4 @@
-package main
+package tuner
 
 import (
 	"encoding/json"
@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"pdfinspector/config"
+	"pdfinspector/filesystem"
 )
 
 // validateJSON checks if a string contains valid JSON
@@ -55,8 +57,8 @@ func writeToFile(data string, counter int, filenameFragment, outputDir string) e
 	return nil
 }
 
-// writeValidatedContent writes the validated content to a specific file path
-func writeValidatedContent(content, filePath string) error {
+// WriteValidatedContent writes the validated content to a specific file path
+func WriteValidatedContent(content, filePath string) error {
 	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write content to file: %v", err)
 	}
@@ -96,4 +98,71 @@ func checkForPreexistingAPIOutput(directory, filenameFragment string, counter in
 		log.Println("Error while checking file system for prior api response info.")
 		return false, "", fmt.Errorf("error checking file existence: %v", err)
 	}
+}
+
+func WriteAttemptResumedataJSON(content, layout, style, outputDir string, attemptNum int, fs filesystem.FileSystem, config *config.ServiceConfig) error {
+	// Step 5: Write the validated content to the filesystem in a way the resume projects json server can read it, plus locally for posterity.
+	// Assuming the file path is up and outside of the project directory
+	// Example: /home/user/output/validated_content.json
+	updatedContent, err := insertLayout(content, layout, style)
+	if err != nil {
+		log.Printf("Error inserting layout info: %v\n", err)
+		return err
+	}
+
+	//TODO !!!!!!!! dont do this!!!!!! not like this!!!!
+	if config.FsType == "local" {
+		// this is/was just a cheesy way to get the attempted resume updated json available to the react project via a local json server service.
+		outputFilePath := filepath.Join("../ResumeData/resumedata/", fmt.Sprintf("attempt%d.json", attemptNum))
+		err = WriteValidatedContent(updatedContent, outputFilePath)
+		if err != nil {
+			log.Printf("Error writing content to file: %v\n", err)
+			return err
+		}
+		log.Println("Content successfully written to:", outputFilePath)
+	} else if config.FsType == "gcs" {
+		outputFilePath := fmt.Sprintf("%s/attempt%d.json", outputDir, attemptNum)
+		log.Printf("writeAttemptResumedataJSON to GCS bucket, path: %s", outputFilePath)
+		err = fs.WriteFile(outputFilePath, []byte(content))
+		if err != nil {
+			log.Printf("Error writing content to file: %v\n", err)
+			return err
+		}
+		log.Printf("writeAttemptResumedataJSON thinks it got past that.")
+	}
+
+	// Example: /home/user/output/validated_content.json
+	localOutfilePath := filepath.Join(outputDir, fmt.Sprintf("attempt%d.json", attemptNum))
+	err = WriteValidatedContent(updatedContent, localOutfilePath)
+	if err != nil {
+		log.Printf("Error writing content to file: %v\n", err)
+		return err
+	}
+	log.Println("Content successfully written to:", localOutfilePath)
+	return nil
+}
+
+func insertLayout(content string, layout string, style string) (string, error) {
+	// Step 1: Deserialize the JSON content into a map
+	var data map[string]interface{}
+	err := json.Unmarshal([]byte(content), &data)
+	if err != nil {
+		return "", err
+	}
+
+	// Step 2: Insert the layout into the map
+	data["layout"] = layout
+
+	if style != "" {
+		data["style"] = style
+	}
+
+	// Step 3: Reserialize the map back into a JSON string
+	updatedContent, err := json.Marshal(data)
+	if err != nil {
+		return "", err
+	}
+
+	// Step 4: Return the updated JSON string
+	return string(updatedContent), nil
 }

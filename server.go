@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	config2 "pdfinspector/config"
+	"pdfinspector/job"
+	"pdfinspector/tuner"
+
 	//"io/fs"
 	"log"
 	"mime"
@@ -16,17 +20,17 @@ import (
 )
 
 type pdfInspectorServer struct {
-	config    *serviceConfig
+	config    *config2.ServiceConfig
 	router    *chi.Mux
 	jobRunner *jobRunner
 }
 
-func newPdfInspectorServer(config *serviceConfig) *pdfInspectorServer {
+func newPdfInspectorServer(config *config2.ServiceConfig) *pdfInspectorServer {
 	server := &pdfInspectorServer{
 		config: config,
 		jobRunner: &jobRunner{
 			config: config,
-			tuner:  newTuner(config),
+			tuner:  tuner.NewTuner(config),
 		},
 	}
 	server.initRoutes()
@@ -52,8 +56,8 @@ func (s *pdfInspectorServer) initRoutes() {
 
 // RunServer starts the HTTP server and listens for requests
 func (s *pdfInspectorServer) RunServer() error {
-	addr := fmt.Sprintf(":%s", s.config.serviceListenPort)
-	log.Printf("Starting server on port %s...\n", s.config.serviceListenPort)
+	addr := fmt.Sprintf(":%s", s.config.ServiceListenPort)
+	log.Printf("Starting server on port %s...\n", s.config.ServiceListenPort)
 
 	// Start the HTTP server with the chi router
 	return http.ListenAndServe(addr, s.router)
@@ -73,7 +77,7 @@ func (s *pdfInspectorServer) healthHandler(w http.ResponseWriter, r *http.Reques
 func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("here in streamJobHandler")
 
-	var job Job
+	var job job.Job
 	if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
 		http.Error(w, "Invalid JSON input", http.StatusBadRequest)
 		return
@@ -89,7 +93,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 	//statusChan := make(chan JobStatus)
 
 	//// Add job to queue
-	job.prepareDefault()
+	job.PrepareDefault()
 	//how about we call to a job runner? which can be a server property and have a tuner already set in it.
 	statusChan := s.jobRunner.RunJobStreaming(&job)
 
@@ -158,7 +162,7 @@ func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Req
 	// Use the rejoined path as needed
 	log.Printf("Result Path: %s\n", resultPath)
 
-	data, err := s.jobRunner.tuner.fs.ReadFile(resultPath)
+	data, err := s.jobRunner.tuner.Fs.ReadFile(resultPath)
 	if err != nil {
 		http.Error(w, "Could not read file from GCS", http.StatusBadRequest)
 		return

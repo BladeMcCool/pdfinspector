@@ -1,4 +1,4 @@
-package main
+package tuner
 
 import (
 	"bytes"
@@ -13,6 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"pdfinspector/config"
+	"pdfinspector/job"
 	"sort"
 	"strings"
 )
@@ -23,7 +25,7 @@ type inspectResult struct {
 	LastPageContentRatio float64
 }
 
-func makePDFRequestAndSave(attempt int, layout, outputDir string, config *serviceConfig, job *Job) error {
+func makePDFRequestAndSave(attempt int, layout, outputDir string, config *config.ServiceConfig, job *job.Job) error {
 	// Step 1: Create a new buffer and a multipart writer
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
@@ -35,18 +37,18 @@ func makePDFRequestAndSave(attempt int, layout, outputDir string, config *servic
 	}
 
 	var urlToRender string
-	if config.fsType == "gcs" {
+	if config.FsType == "gcs" {
 		//for server mode with gcs data we need to make sure we pass jsonserver with a hostname value (no https:// prefix), and make sure that the uuid and a slash (uri escaped) get prepended to the attemptN value.
-		jsonServerHostname, err := extractHostname(config.jsonServerURL)
+		jsonServerHostname, err := extractHostname(config.JsonServerURL)
 		if err != nil {
 			return err
 		}
 		jsonPathFragment := url.PathEscape(fmt.Sprintf("%s/attempt%d", job.Id.String(), attempt))
 		fmt.Sprintf("%s/attempt%d", job.Id.String(), attempt)
-		urlToRender = fmt.Sprintf("%s/?jsonserver=%s&resumedata=%s&layout=%s", config.reactAppURL, jsonServerHostname, jsonPathFragment, layout)
+		urlToRender = fmt.Sprintf("%s/?jsonserver=%s&resumedata=%s&layout=%s", config.ReactAppURL, jsonServerHostname, jsonPathFragment, layout)
 	} else {
 		//legacy way, presumably json server is on local host or smth.
-		urlToRender = fmt.Sprintf("%s/?resumedata=attempt%d&layout=%s", config.reactAppURL, attempt, layout)
+		urlToRender = fmt.Sprintf("%s/?resumedata=attempt%d&layout=%s", config.ReactAppURL, attempt, layout)
 	}
 	_, err = io.WriteString(urlField, urlToRender)
 	if err != nil {
@@ -80,7 +82,7 @@ func makePDFRequestAndSave(attempt int, layout, outputDir string, config *servic
 	}
 
 	// Step 4: Create a new POST request with the multipart form data
-	gotenbergRequestURL := fmt.Sprintf("%s/forms/chromium/convert/url", config.gotenbergURL)
+	gotenbergRequestURL := fmt.Sprintf("%s/forms/chromium/convert/url", config.GotenbergURL)
 	req, err := http.NewRequest("POST", gotenbergRequestURL, &requestBody)
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP request: %v", err)
@@ -141,7 +143,7 @@ func extractHostname(rawURL string) (string, error) {
 	return hostname, nil
 }
 
-func dumpPDFToPNG(attempt int, outputDir string, config *serviceConfig) error {
+func dumpPDFToPNG(attempt int, outputDir string, config *config.ServiceConfig) error {
 	// Get the current working directory
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -154,7 +156,7 @@ func dumpPDFToPNG(attempt int, outputDir string, config *serviceConfig) error {
 	//could maybe check the pdf for not containing error stuff like "Uncaught runtime errors" before proceeding.
 	// MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd)/output:/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out-%03d.png -r144 /workspace/attempt.pdf
 	var cmd *exec.Cmd
-	if config.useSystemGs {
+	if config.UseSystemGs {
 		cmd = exec.Command(
 			"gs",
 			"-sDEVICE=txtwrite",
@@ -190,7 +192,7 @@ func dumpPDFToPNG(attempt int, outputDir string, config *serviceConfig) error {
 	}
 	log.Println("Here before proceeding to image dumping")
 
-	if config.useSystemGs {
+	if config.UseSystemGs {
 		cmd = exec.Command(
 			"gs",
 			"-sDEVICE=pngalpha",

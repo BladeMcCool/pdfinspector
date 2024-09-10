@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	run "cloud.google.com/go/run/apiv2"
@@ -12,23 +12,23 @@ import (
 	"strconv"
 )
 
-// serviceConfig struct to hold the configuration values
-type serviceConfig struct {
-	gotenbergURL      string
-	jsonServerURL     string
-	reactAppURL       string
-	fsType            string
-	mode              string
-	localPath         string
-	gcsBucket         string
-	openAiApiKey      string //oh noes the capitalization *hand waving* guess what? idgaf :) my way.
-	serviceUrl        string
-	useSystemGs       bool //in the deployed environment we will bake a gs into the image that runs this part, so we can just use a 'gs' command locally.
-	serviceListenPort string
+// ServiceConfig struct to hold the configuration values
+type ServiceConfig struct {
+	GotenbergURL      string
+	JsonServerURL     string
+	ReactAppURL       string
+	FsType            string
+	Mode              string
+	LocalPath         string
+	GcsBucket         string
+	OpenAiApiKey      string //oh noes the capitalization *hand waving* guess what? idgaf :) my way.
+	ServiceUrl        string
+	UseSystemGs       bool //in the deployed environment we will bake a gs into the image that runs this part, so we can just use a 'gs' command locally.
+	ServiceListenPort string
 }
 
-// getServiceConfig function to return a pointer to serviceConfig
-func getServiceConfig() *serviceConfig {
+// GetServiceConfig function to return a pointer to serviceConfig
+func GetServiceConfig() *ServiceConfig {
 	// Define CLI flags
 	gotenbergURL := flag.String("gotenberg-url", "", "URL for Gotenberg service")
 	jsonServerURL := flag.String("json-server-url", "", "URL for JSON server")
@@ -51,27 +51,27 @@ func getServiceConfig() *serviceConfig {
 	//, // Default to "server"
 
 	// Populate the serviceConfig struct
-	config := &serviceConfig{
-		gotenbergURL:  getConfig(gotenbergURL, "GOTENBERG_URL", "http://localhost:80"),
-		jsonServerURL: getConfig(jsonServerURL, "JSON_SERVER_URL", "http://localhost:3002"),
-		reactAppURL:   getConfig(reactAppURL, "REACT_APP_URL", "http://host.docker.internal:3000"),
-		openAiApiKey:  getConfig(openAiApiKey, "OPENAI_API_KEY", ""),
-		fsType:        getConfig(fstype, "FSTYPE", "gcs"),
-		gcsBucket:     getConfig(gcsBucket, "GCS_BUCKET", "my-stinky-bucket"),
-		localPath:     getConfig(localPath, "LOCAL_PATH", "output"),
-		mode:          getConfig(mode, "MODE", "server"), // Default to "server"
-		useSystemGs:   getConfigBool(useSystemGs, "USE_SYSTEM_GS", true),
+	config := &ServiceConfig{
+		GotenbergURL:  getConfig(gotenbergURL, "GOTENBERG_URL", "http://localhost:80"),
+		JsonServerURL: getConfig(jsonServerURL, "JSON_SERVER_URL", "http://localhost:3002"),
+		ReactAppURL:   getConfig(reactAppURL, "REACT_APP_URL", "http://host.docker.internal:3000"),
+		OpenAiApiKey:  getConfig(openAiApiKey, "OPENAI_API_KEY", ""),
+		FsType:        getConfig(fstype, "FSTYPE", "gcs"),
+		GcsBucket:     getConfig(gcsBucket, "GCS_BUCKET", "my-stinky-bucket"),
+		LocalPath:     getConfig(localPath, "LOCAL_PATH", "output"),
+		Mode:          getConfig(mode, "MODE", "server"), // Default to "server"
+		UseSystemGs:   getConfigBool(useSystemGs, "USE_SYSTEM_GS", true),
 	}
 
 	//Validation
-	if config.fsType == "gcs" && config.gcsBucket == "" {
+	if config.FsType == "gcs" && config.GcsBucket == "" {
 		log.Fatal("GCS bucket name must be specified for GCS filesystem")
 	}
 
-	if config.fsType == "local" && config.localPath == "" {
+	if config.FsType == "local" && config.LocalPath == "" {
 		log.Fatal("Local path must be specified for local filesystem")
 	}
-	if config.openAiApiKey == "" {
+	if config.OpenAiApiKey == "" {
 		log.Fatal("An Open AI (what a misnomer lol) API Key is required for the server to be able to do anything interesting.")
 	}
 
@@ -80,10 +80,10 @@ func getServiceConfig() *serviceConfig {
 		//not fatal. might not have credentials to access this.
 		log.Printf("failed to get service URL : %s", err.Error())
 	}
-	config.serviceUrl = url
+	config.ServiceUrl = url
 	log.Printf("determined service url to be: %s", url)
 
-	config.serviceListenPort = "8080"
+	config.ServiceListenPort = "8080"
 
 	return config
 }

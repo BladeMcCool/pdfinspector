@@ -1,4 +1,4 @@
-package main
+package tuner
 
 import (
 	"bytes"
@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"pdfinspector/config"
 	"pdfinspector/filesystem"
+	"pdfinspector/job"
 	"strings"
 )
 
@@ -35,22 +37,22 @@ type APIResponse struct {
 	} `json:"choices"`
 }
 
-type tuner struct {
-	config *serviceConfig
-	fs     filesystem.FileSystem
+type Tuner struct {
+	config *config.ServiceConfig
+	Fs     filesystem.FileSystem
 }
 
-func newTuner(config *serviceConfig) *tuner {
-	t := &tuner{
+func NewTuner(config *config.ServiceConfig) *Tuner {
+	t := &Tuner{
 		config: config,
 	}
 	t.configureFilesystem()
 	return t
 }
 
-func (t *tuner) getBaselineJSON(baseline string) (string, error) {
+func (t *Tuner) GetBaselineJSON(baseline string) (string, error) {
 	// get JSON of the current complete resume including all the hidden stuff, this hits an express server that imports the reactresume resumedata.mjs and outputs it as json.
-	jsonRequestURL := fmt.Sprintf("%s?baseline=%s", t.config.jsonServerURL, baseline)
+	jsonRequestURL := fmt.Sprintf("%s?baseline=%s", t.config.JsonServerURL, baseline)
 	resp, err := http.Get(jsonRequestURL)
 	if err != nil {
 		log.Fatalf("Failed to make the HTTP request: %v", err)
@@ -65,7 +67,7 @@ func (t *tuner) getBaselineJSON(baseline string) (string, error) {
 	return string(body), nil
 }
 
-func (t *tuner) getLayoutFromBaselineJSON(baselineJSON string) (string, string, error) {
+func (t *Tuner) GetLayoutFromBaselineJSON(baselineJSON string) (string, string, error) {
 	//if i want anything else beyond layout and style i should return a struct because this is ugly.
 
 	//log.Println("dbg baselinejson", baselineJSON)
@@ -86,7 +88,7 @@ func (t *tuner) getLayoutFromBaselineJSON(baselineJSON string) (string, string, 
 	return layout, style, nil
 }
 
-func (t *tuner) takeNotesOnJD(input *Input, outputDir string) (string, error) {
+func (t *Tuner) takeNotesOnJD(input *job.Input, outputDir string) (string, error) {
 	//JDResponseFormat, err := os.ReadFile(filepath.Join("response_templates", "jdinfo.json"))
 	jDResponseSchemaRaw, err := os.ReadFile(filepath.Join("response_templates", "jdinfo-schema.json"))
 	if err != nil {
@@ -180,7 +182,7 @@ func (t *tuner) takeNotesOnJD(input *Input, outputDir string) (string, error) {
 	log.Printf("Got %d bytes of JSON content about the JD (at least well formed enough to be decodable) out of that last response\n", len(content))
 
 	outputFilePath := filepath.Join(outputDir, "jdinfo-out.json")
-	err = writeValidatedContent(content, outputFilePath)
+	err = WriteValidatedContent(content, outputFilePath)
 	if err != nil {
 		log.Fatalf("Error writing content to file: %v\n", err)
 	}
@@ -189,10 +191,10 @@ func (t *tuner) takeNotesOnJD(input *Input, outputDir string) (string, error) {
 }
 
 // configureFilesystem sets up the filesystem based on the command line flags.
-func (t *tuner) configureFilesystem() filesystem.FileSystem {
-	if t.config.fsType == "local" {
-		t.fs = &filesystem.LocalFileSystem{BasePath: t.config.localPath}
-	} else if t.config.fsType == "gcs" {
+func (t *Tuner) configureFilesystem() filesystem.FileSystem {
+	if t.config.FsType == "local" {
+		t.Fs = &filesystem.LocalFileSystem{BasePath: t.config.LocalPath}
+	} else if t.config.FsType == "gcs" {
 		// Create a new GCS client
 		log.Printf("setting up gcs client ...")
 		ctx := context.Background()
@@ -200,15 +202,15 @@ func (t *tuner) configureFilesystem() filesystem.FileSystem {
 		if err != nil {
 			log.Fatalf("Failed to create GCS client: %v", err)
 		}
-		if t.config.gcsBucket == "" {
+		if t.config.GcsBucket == "" {
 			log.Fatal("gcs-bucket arg needs to have a value")
 		}
-		t.fs = &filesystem.GCSFileSystem{Client: client, BucketName: t.config.gcsBucket}
+		t.Fs = &filesystem.GCSFileSystem{Client: client, BucketName: t.config.GcsBucket}
 	}
 	return nil
 }
 
-func (t *tuner) getExpectedResponseJsonSchema(layout string) (interface{}, error) {
+func (t *Tuner) GetExpectedResponseJsonSchema(layout string) (interface{}, error) {
 	expectResponseFilePath := filepath.Join("response_templates", fmt.Sprintf("%s-schema.json", layout))
 	// Read expect_response.json
 	expectResponseContent, err := os.ReadFile(expectResponseFilePath)
@@ -222,7 +224,7 @@ func (t *tuner) getExpectedResponseJsonSchema(layout string) (interface{}, error
 	}
 	return expectResponseSchema, nil
 }
-func (t *tuner) getDefaultPrompt(layout string) (string, error) {
+func (t *Tuner) GetDefaultPrompt(layout string) (string, error) {
 	log.Printf("No (or empty) prompt from the file system so will use a default one.")
 
 	//prompt := "Provide feedback on the following JSON. Is it well formed? What do you think the purpose is? Tell me about things marked as hide and what that might mean. Finally, how long in terms of page count do you think the final document this feeds into is?\n\nJSON: "
@@ -295,7 +297,7 @@ func (t *tuner) getDefaultPrompt(layout string) (string, error) {
 	return value, nil
 }
 
-func (t *tuner) makeAPIRequest(apiBody interface{}, apiKey string, counter int, name, outputDir string) (string, error) {
+func (t *Tuner) makeAPIRequest(apiBody interface{}, apiKey string, counter int, name, outputDir string) (string, error) {
 	//panic("slow down there son, you really want to hit the paid api at this time?")
 	log.Printf("Make request to OpenAI ...")
 	// Serialize the interface to pretty-printed JSON
