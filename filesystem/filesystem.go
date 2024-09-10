@@ -19,6 +19,7 @@ import (
 // FileSystem interface defines methods to interact with different types of file systems.
 type FileSystem interface {
 	WriteFile(filename string, data []byte) error
+	Writer(filename string) (io.Writer, error)
 	ReadFile(filename string) ([]byte, error)
 }
 
@@ -35,6 +36,16 @@ func (lfs *LocalFileSystem) WriteFile(filename string, data []byte) error {
 	//	return err
 	//}
 	return os.WriteFile(filePath, data, 0644)
+}
+
+// Writer for LocalFilesystem
+func (lfs *LocalFileSystem) Writer(filename string) (io.Writer, error) {
+	// Open the file for writing (create it if it doesn't exist)
+	file, err := os.Create(filename)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
 }
 func (lfs *LocalFileSystem) ReadFile(filename string) ([]byte, error) {
 	filePath := filepath.Join(lfs.BasePath, filename)
@@ -74,6 +85,16 @@ func (gcs *GCSFileSystem) WriteFile(filename string, data []byte) error {
 
 	return nil
 }
+
+// Writer for GCSFilesystem
+func (gcs *GCSFileSystem) Writer(filename string) (io.Writer, error) {
+	// Create a GCS object writer
+	ctx := context.Background()
+	bucket := gcs.Client.Bucket(gcs.BucketName)
+	writer := bucket.Object(filename).NewWriter(ctx)
+	return writer, nil
+}
+
 func (gcs *GCSFileSystem) ReadFile(filename string) ([]byte, error) {
 	ctx := context.Background()
 	rc, err := gcs.Client.Bucket(gcs.BucketName).Object(filename).NewReader(ctx)

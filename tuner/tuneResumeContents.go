@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -218,16 +219,19 @@ func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, l
 			//data["messages"] = messages
 		}
 	}
-	saveBestAttemptToGCS(attemptsLog, fs, config, job, updates)
+	err = saveBestAttemptToGCS(attemptsLog, fs, config, job, updates)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
 // alright this is my cheesy naive implementation that just reads the file and then writes it but in short order i'd like to try out streaming it from fs to gcs with code similar to what is commented below this func implementation
-func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, config *config.ServiceConfig, job *job.Job, updates chan job.JobStatus) {
+func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, config *config.ServiceConfig, job *job.Job, updates chan job.JobStatus) error {
 	//only if we're using gs fs of course.
 	if config.FsType != "gcs" {
-		return
+		return nil //not an error, but we can't proceed with gcs stuff without this being gcs.
 	}
 
 	bestAttemptIndex := getBestAttemptIndex(results)
@@ -237,35 +241,61 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 	_, err := os.Stat(filepath)
 	if err != nil {
 		log.Printf("error statting %s from the local filesystem", err.Error())
-		return
+		return err
 	}
 
 	// File exists, read its contents
-	data, err := os.ReadFile(filepath)
-	if err != nil {
-		log.Printf("error getting %s from the local filesystem", err.Error())
-	}
-
+	//data, err := os.ReadFile(filepath)
+	//if err != nil {
+	//	log.Printf("error getting %s from the local filesystem", err.Error())
+	//}
+	//
 	outputFilePath := fmt.Sprintf("%s/Resume.pdf", outputDir) //maybe can save with the principals name instead? probably output filename options should be part of the job (name explicitly, name based on candidate data field, invent a name, etc)
-	SendJobUpdate(updates, fmt.Sprintf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex))
-	log.Printf("writing PDF data to GCS bucket path: %s", outputFilePath)
-	err = fs.WriteFile(outputFilePath, data)
+	//SendJobUpdate(updates, fmt.Sprintf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex))
+	//log.Printf("writing PDF data to GCS bucket path: %s", outputFilePath)
+	//err = fs.WriteFile(outputFilePath, data)
+	//if err != nil {
+	//	log.Printf("Error writing content to file: %v\n", err)
+	//}
+	reader, err := os.Open(filepath)
 	if err != nil {
-		log.Printf("Error writing content to file: %v\n", err)
+		log.Printf("Error getting local FS file reader: %v\n", err)
 	}
+	writer, err := fs.Writer(outputFilePath)
+	if err != nil {
+		log.Printf("Error getting GCS file writer: %v\n", err)
+	}
+
+	//stream file from local fs to gcs
+	bytesCount, err := io.Copy(writer, reader)
+	if err != nil {
+		return fmt.Errorf("io.Copy: %v", err)
+	}
+	if closer, ok := writer.(io.Closer); ok {
+		err = closer.Close()
+		if err != nil {
+			return err
+		}
+	}
+	//
+	//// Helper function to close the writer if it implements io.Closer
+	//func closeWriter(w io.Writer) error {
+	//	return closer.Close()
+	//}
+	//	return nil
+	//}
+	//// Close the writer and finalize the file upload
+	//if err := writer.Close(); err != nil {
+	//	return fmt.Errorf("Writer.Close: %v", err)
+	//}
 	log.Printf("saveBestAttemptToGCS believed to be complete")
-	//todo: get the host name into the message below. should be able to get it from the http request ... can pass it down perhaps.
-	SendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: %s/joboutput/%s", len(data), config.ServiceUrl, outputFilePath))
+	SendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: %s/joboutput/%s", bytesCount, config.ServiceUrl, outputFilePath))
+	return nil
 }
 
-func SendJobUpdate(updates chan job.JobStatus, message string) {
-	if updates == nil {
-		return
-	}
-	updates <- job.JobStatus{Message: message}
-}
-
-//func uploadFileToGCS(bucketName, objectName, filePath string) error {
+//todo try out some kind of streaming version of the func above maybe using os.Open and passing the output of that to GCS as a reader in the io.Copy operation
+//probably enhance the interface to offer a GetWriter(filename) method which would return the writer from obj.
+//func streamFileIntoGCS(bucketName, objectName, filePath string) error {
 //	// Create a context
 //	ctx := context.Background()
 //
@@ -303,6 +333,13 @@ func SendJobUpdate(updates chan job.JobStatus, message string) {
 //	log.Printf("File %s uploaded to bucket %s as %s\n", filePath, bucketName, objectName)
 //	return nil
 //}
+
+func SendJobUpdate(updates chan job.JobStatus, message string) {
+	if updates == nil {
+		return
+	}
+	updates <- job.JobStatus{Message: message}
+}
 
 func getBestAttemptIndex(results []inspectResult) int {
 	//panic("well, laugh.")

@@ -5,27 +5,25 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	config2 "pdfinspector/config"
-	"pdfinspector/job"
-	"pdfinspector/tuner"
-
-	//"io/fs"
 	"log"
 	"mime"
 	"net/http"
 	"path/filepath"
+	"pdfinspector/config"
+	"pdfinspector/job"
+	"pdfinspector/tuner"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type pdfInspectorServer struct {
-	config    *config2.ServiceConfig
+	config    *config.ServiceConfig
 	router    *chi.Mux
 	jobRunner *jobRunner
 }
 
-func newPdfInspectorServer(config *config2.ServiceConfig) *pdfInspectorServer {
+func newPdfInspectorServer(config *config.ServiceConfig) *pdfInspectorServer {
 	server := &pdfInspectorServer{
 		config: config,
 		jobRunner: &jobRunner{
@@ -146,7 +144,6 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 }
 
 func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("here 1 ...")
 	// Extract the path and split it by '/'
 	pathParts := strings.Split(r.URL.Path, "/")
 	// should become stuff like []string{"","jobresult","somejobid","somepdf"}

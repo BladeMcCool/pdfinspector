@@ -2,13 +2,13 @@ package main
 
 import (
 	"log"
-	config2 "pdfinspector/config"
+	"pdfinspector/config"
 	jobPackage "pdfinspector/job"
 	"pdfinspector/tuner"
 )
 
 type jobRunner struct {
-	config *config2.ServiceConfig
+	config *config.ServiceConfig
 	tuner  *tuner.Tuner
 }
 

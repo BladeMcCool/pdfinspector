@@ -36,7 +36,7 @@ type Job struct {
 }
 
 var defaultAcceptableRatio = 0.88
-var defaultMaxAttempts = 7
+var defaultMaxAttempts = 1
 
 //	func newJob(acceptableRatio float64, maxAttempts int) *Job {
 //		job := &Job{}
