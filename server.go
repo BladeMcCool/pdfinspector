@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/google/uuid"
+	//"io/fs"
 	"log"
 	"mime"
 	"net/http"
@@ -16,13 +16,18 @@ import (
 )
 
 type pdfInspectorServer struct {
-	config *serviceConfig
-	router *chi.Mux
+	config    *serviceConfig
+	router    *chi.Mux
+	jobRunner *jobRunner
 }
 
 func newPdfInspectorServer(config *serviceConfig) *pdfInspectorServer {
 	server := &pdfInspectorServer{
 		config: config,
+		jobRunner: &jobRunner{
+			config: config,
+			tuner:  newTuner(config),
+		},
 	}
 	server.initRoutes()
 	return server
@@ -34,13 +39,13 @@ func (s *pdfInspectorServer) initRoutes() {
 	// Add middleware
 	router.Use(middleware.Logger)                    // Log requests
 	router.Use(middleware.Recoverer)                 // Recover from panics
-	router.Use(middleware.Timeout(60 * time.Second)) // Set a request timeout
+	router.Use(middleware.Timeout(15 * time.Minute)) // Set a request timeout
 
 	// Define routes
-	router.Get("/", s.rootHandler)                // Root handler
-	router.Get("/health", s.healthHandler)        // Health check handler
-	router.Post("/streamjob", s.streamJobHandler) // Keep the connection open while running the job and streaming updates
-	router.Get("/joboutput", s.jobOutputHandler)  // Get the output
+	router.Get("/", s.rootHandler)                 // Root handler
+	router.Get("/health", s.healthHandler)         // Health check handler
+	router.Post("/streamjob", s.streamJobHandler)  // Keep the connection open while running the job and streaming updates
+	router.Get("/joboutput/*", s.jobOutputHandler) // Get the output
 
 	s.router = router
 }
@@ -80,13 +85,15 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.WriteHeader(http.StatusOK)
 
-	// Create a channel to communicate job status updates
-	statusChan := make(chan JobStatus)
+	//// Create a channel to communicate job status updates
+	//statusChan := make(chan JobStatus)
 
 	//// Add job to queue
-	job.Id = uuid.New()
+	job.prepareDefault()
 	//how about we call to a job runner? which can be a server property and have a tuner already set in it.
-	go runJob(&job, s.config, statusChan)
+	statusChan := s.jobRunner.RunJobStreaming(&job)
+
+	//go runJob(&job, s.config, statusChan)
 
 	// Stream status updates to the client
 	for status := range statusChan {
@@ -151,7 +158,7 @@ func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Req
 	// Use the rejoined path as needed
 	log.Printf("Result Path: %s\n", resultPath)
 
-	data, err := fs.ReadFile(resultPath)
+	data, err := s.jobRunner.tuner.fs.ReadFile(resultPath)
 	if err != nil {
 		http.Error(w, "Could not read file from GCS", http.StatusBadRequest)
 		return

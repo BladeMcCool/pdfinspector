@@ -11,9 +11,9 @@ import (
 	"strings"
 )
 
-func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, outputDir string, acceptableRatio float64, maxAttempts int, fs filesystem.FileSystem, config *serviceConfig, job *Job, updates chan JobStatus) error {
+func (t *tuner) tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, outputDir string, fs filesystem.FileSystem, config *serviceConfig, job *Job, updates chan JobStatus) error {
 	sendJobUpdate(updates, "getting any JD meta")
-	jDmetaRawJSON, err := takeNotesOnJD(input, outputDir)
+	jDmetaRawJSON, err := t.takeNotesOnJD(input, outputDir)
 	if err != nil {
 		log.Println("error taking notes on JD: ", err)
 		return err
@@ -62,7 +62,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 				"role": "system",
 				//"content": fmt.Sprintf("You are a helpful resume tuning person (not a bot or an AI). The response should include only the fields expected to be rendered by the application, in well-formed JSON, without any triple quoting, such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom.", int(acceptable_ratio*100)),
 				//"content": fmt.Sprintf("You are a helpful resume tuning assistant. The response should include resume content such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom. The output must respect the supplied JSON schema including having some value for fields identified as required in the schema", int(acceptable_ratio*100)),
-				"content": fmt.Sprintf("You are a helpful resume tuning assistant. The response should include resume content such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom.", int(acceptableRatio*100)),
+				"content": fmt.Sprintf("You are a helpful resume tuning assistant. The response should include resume content such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom.", int(job.AcceptableRatio*100)),
 			},
 			// this was the way to do it without using the structured output facilities. tbh i'm still not sure what was producing better results but continuing on with the "right" way (structured output) at present.
 			//{
@@ -93,7 +93,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 
 	var attemptsLog []inspectResult
 
-	for i := 0; i < maxAttempts; i++ {
+	for i := 0; i < job.MaxAttempts; i++ {
 		api_request_pretty, err := serializeToJSON(data)
 		writeToFile(api_request_pretty, i, "api_request_pretty", outputDir)
 		if err != nil {
@@ -105,7 +105,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 		}
 		if !exists {
 			sendJobUpdate(updates, fmt.Sprintf("asking for an attempt %d", i))
-			output, err = makeAPIRequest(data, input.APIKey, i, "api_response_raw", outputDir)
+			output, err = t.makeAPIRequest(data, input.APIKey, i, "api_response_raw", outputDir)
 		}
 
 		//openai api should have responded to our request with a json text that can be used as resumedata input. extract it.
@@ -176,7 +176,7 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 				//tryPrompt = fmt.Sprintf("Too long, reduce by %d%%, by making minimal edits to the prior output as possible. Sometimes going overboard on skills makes it too long. Remember to make the candidate still look great in relation to the Job Description supplied earlier!", reduceByPct)
 				tryPrompt = fmt.Sprintf("Too long, reduce the total content length by %d%%, while still keeping the information highly relevant to the Job Description.", reduceByPct)
 			}
-		} else if result.NumberOfPages == 1 && result.LastPageContentRatio < acceptableRatio {
+		} else if result.NumberOfPages == 1 && result.LastPageContentRatio < job.AcceptableRatio {
 			log.Println("make it longer ...")
 			tryNewPrompt = true
 			//tryPrompt = fmt.Sprintf("Not long enough when rendered, was only %d%% of the page. Fill it up to between %d%% and 95%%. You can bulk up the content of existing project descriptions, add new projects within companies or by beefing up the skills list. Remember to make the candidate look even greater in relation to the Job Description supplied earlier!", int(result.LastPageContentRatio*100), int(acceptable_ratio*100))
@@ -185,8 +185,8 @@ func tuneResumeContents(input *Input, mainPrompt, baselineJSON, layout, style, o
 			tryPrompt = fmt.Sprintf("Not long enough, increase the total content length by %d%%, while still keeping the information highly relevant to the Job Description.", increaseByPct)
 
 			//try to make it longer!!! - include the assistants last message in the new prompt so it can see what it did
-		} else if result.NumberOfPages == 1 && result.LastPageContentRatio >= acceptableRatio {
-			log.Printf("over %d%% and still on one page? nice. we should stop (determined complete after attempt index %d).\n", int(acceptableRatio*100), i)
+		} else if result.NumberOfPages == 1 && result.LastPageContentRatio >= job.AcceptableRatio {
+			log.Printf("over %d%% and still on one page? nice. we should stop (determined complete after attempt index %d).\n", int(job.AcceptableRatio*100), i)
 			//we will stop now, and this will be the 'best' one found by getBestAttemptIndex later if we are saving one to gcs.
 			break
 		}

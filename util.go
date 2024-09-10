@@ -1,0 +1,99 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+)
+
+// validateJSON checks if a string contains valid JSON
+func validateJSON(data string) error {
+	var js json.RawMessage //voodoo -- apparently even though its []byte .... thats ok? we can even re-unmarshal it to an actual type later? this was suggested to me for simple json decode verification, and it works. so *shrugs*
+	if err := json.Unmarshal([]byte(data), &js); err != nil {
+		return fmt.Errorf("invalid JSON: %v", err)
+	}
+	return nil
+}
+
+// decodeJSON takes a JSON string and returns a deserialized object as an interface{}.
+func decodeJSON(data string) (interface{}, error) {
+	var js json.RawMessage
+
+	// Unmarshal the JSON string into json.RawMessage to verify its validity
+	if err := json.Unmarshal([]byte(data), &js); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %v", err)
+	}
+
+	// If the JSON is valid, you can return it as an interface{}
+	var result interface{}
+	if err := json.Unmarshal(js, &result); err != nil {
+		return nil, fmt.Errorf("error decoding JSON into interface{}: %v", err)
+	}
+
+	// Return the deserialized object
+	return result, nil
+}
+
+// writeToFile writes data to a file in the output directory with a filename based on the counter and fragment
+func writeToFile(data string, counter int, filenameFragment, outputDir string) error {
+	// Create the output directory if it doesn't exist
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %v", err)
+	}
+
+	// Construct the filename
+	filename := fmt.Sprintf("%s_%d.txt", filenameFragment, counter)
+	filepath := filepath.Join(outputDir, filename)
+
+	// Write the data to the file
+	if err := os.WriteFile(filepath, []byte(data), 0644); err != nil {
+		return fmt.Errorf("failed to write to file: %v", err)
+	}
+
+	return nil
+}
+
+// writeValidatedContent writes the validated content to a specific file path
+func writeValidatedContent(content, filePath string) error {
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write content to file: %v", err)
+	}
+	return nil
+}
+
+// serializeToJSON takes an interface, serializes it to pretty-printed JSON, and returns it as a string
+func serializeToJSON(v interface{}) (string, error) {
+	// Marshal the interface to pretty-printed JSON
+	jsonData, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to serialize to JSON: %v", err)
+	}
+	return string(jsonData), nil
+}
+
+func checkForPreexistingAPIOutput(directory, filenameFragment string, counter int) (bool, string, error) {
+	// Construct the filename
+	filename := fmt.Sprintf("%s_%d.txt", filenameFragment, counter)
+	filepath := filepath.Join(directory, filename)
+
+	// Check if the file exists
+	if _, err := os.Stat(filepath); err == nil {
+		// File exists, read its contents
+		data, err := os.ReadFile(filepath)
+		if err != nil {
+			return true, "", fmt.Errorf("failed to read existing API output: %v", err)
+		}
+		log.Printf("Read prior response for api request attempt number %d from file system.\n", counter)
+		return true, string(data), nil
+	} else if os.IsNotExist(err) {
+		// File does not exist
+		log.Printf("No prior response found for api request attempt number %d in file system.\n", counter)
+		return false, "", nil
+	} else {
+		// Some other error occurred
+		log.Println("Error while checking file system for prior api response info.")
+		return false, "", fmt.Errorf("error checking file existence: %v", err)
+	}
+}
