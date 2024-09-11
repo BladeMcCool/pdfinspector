@@ -50,6 +50,55 @@ func NewTuner(config *config.ServiceConfig) *Tuner {
 	return t
 }
 
+func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
+
+	if job.BaselineJSON == "" && job.Baseline != "" && job.IsForAdmin {
+		baselineJSON, err := t.GetBaselineJSON(job.Baseline)
+		if err != nil {
+			log.Fatalf("error from reading baseline JSON: %v", err)
+		}
+		job.BaselineJSON = baselineJSON
+	}
+	SendJobUpdate(updates, "got baseline JSON")
+
+	layout, style, err := t.GetLayoutFromBaselineJSON(job.BaselineJSON)
+	if err != nil {
+		log.Fatalf("error from extracting layout from baseline JSON: %v", err)
+	}
+	if job.StyleOverride != "" {
+		style = job.StyleOverride
+	}
+	job.Layout = layout
+	job.Style = style
+
+	//job.ExpectResponseSchema, err = t.GetExpectedResponseJsonSchema(layout)
+	////todo refactor this stuff lol
+	//inputTemp := &jobPackage.Input{
+	//	JD:                   job.JobDescription,
+	//	ExpectResponseSchema: expectResponseSchema,
+	//	APIKey:               j.config.OpenAiApiKey,
+	//}
+
+	mainPrompt := job.CustomPrompt
+	if mainPrompt == "" {
+		mainPrompt, err = t.GetDefaultPrompt(layout)
+		if err != nil {
+			log.Println("error from reading input prompt: ", err)
+			return err
+		}
+	}
+	job.MainPrompt = mainPrompt
+
+	////todo: fix this calls arguments it should probably just be one struct.
+	////outputDir := fmt.Sprintf("outputs/%s", job.Id.String())
+	//outputDir := job.Id.String() // i want to be able to change this to nest under a subdirectory but its causing all kinds of problems right now.
+
+	//err = t.TuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, outputDir, t.Fs, j.config, job, updates)
+	//job.OutputDir = filepath.Join(t.config.LocalPath, job.Id.String())
+	job.OutputDir = fmt.Sprintf("%s/%s", t.config.LocalPath, job.Id.String())
+	return nil
+}
+
 func (t *Tuner) GetBaselineJSON(baseline string) (string, error) {
 	// get JSON of the current complete resume including all the hidden stuff, this hits an express server that imports the reactresume resumedata.mjs and outputs it as json.
 	jsonRequestURL := fmt.Sprintf("%s?baseline=%s", t.config.JsonServerURL, baseline)
@@ -88,7 +137,7 @@ func (t *Tuner) GetLayoutFromBaselineJSON(baselineJSON string) (string, string, 
 	return layout, style, nil
 }
 
-func (t *Tuner) takeNotesOnJD(input *job.Input, outputDir string) (string, error) {
+func (t *Tuner) takeNotesOnJD(job *job.Job) (string, error) {
 	//JDResponseFormat, err := os.ReadFile(filepath.Join("response_templates", "jdinfo.json"))
 	jDResponseSchemaRaw, err := os.ReadFile(filepath.Join("response_templates", "jdinfo-schema.json"))
 	if err != nil {
@@ -105,7 +154,7 @@ func (t *Tuner) takeNotesOnJD(input *job.Input, outputDir string) (string, error
 	prompt := strings.Join([]string{
 		"Extract information from the following Job Description. Take note of the name of the company, the job title, and most importantly the list of key words that a candidate will have in their CV in order to get through initial screening. Additionally, extract any location, remote-ok status, salary info and hiring process notes which can be succinctly captured.",
 		"\n--- start job description ---\n",
-		input.JD,
+		job.JobDescription,
 		"\n--- end job description ---\n",
 	}, "")
 
@@ -145,17 +194,17 @@ func (t *Tuner) takeNotesOnJD(input *job.Input, outputDir string) (string, error
 		"temperature": 0.7,
 	}
 	api_request_pretty, err := serializeToJSON(apirequest)
-	writeToFile(api_request_pretty, 0, "jd_info_request_pretty", outputDir)
+	writeToFile(api_request_pretty, 0, "jd_info_request_pretty", job.OutputDir)
 	if err != nil {
 		log.Fatalf("Failed to marshal final JSON: %v", err)
 	}
 
-	exists, output, err := checkForPreexistingAPIOutput(outputDir, "jd_info_response_raw", 0)
+	exists, output, err := checkForPreexistingAPIOutput(job.OutputDir, "jd_info_response_raw", 0)
 	if err != nil {
 		log.Fatalf("Error checking for pre-existing API output: %v", err)
 	}
 	if !exists {
-		output, err = t.makeAPIRequest(apirequest, input.APIKey, 0, "jd_info_response_raw", outputDir)
+		output, err = t.makeAPIRequest(apirequest, 0, "jd_info_response_raw", job.OutputDir)
 		if err != nil {
 			log.Fatalf("Error making API request: %v", err)
 		}
@@ -181,7 +230,7 @@ func (t *Tuner) takeNotesOnJD(input *job.Input, outputDir string) (string, error
 	}
 	log.Printf("Got %d bytes of JSON content about the JD (at least well formed enough to be decodable) out of that last response\n", len(content))
 
-	outputFilePath := filepath.Join(outputDir, "jdinfo-out.json")
+	outputFilePath := filepath.Join(job.OutputDir, "jdinfo-out.json")
 	err = WriteValidatedContent(content, outputFilePath)
 	if err != nil {
 		log.Fatalf("Error writing content to file: %v\n", err)
@@ -297,7 +346,7 @@ func (t *Tuner) GetDefaultPrompt(layout string) (string, error) {
 	return value, nil
 }
 
-func (t *Tuner) makeAPIRequest(apiBody interface{}, apiKey string, counter int, name, outputDir string) (string, error) {
+func (t *Tuner) makeAPIRequest(apiBody interface{}, counter int, name, outputDir string) (string, error) {
 	//panic("slow down there son, you really want to hit the paid api at this time?")
 	log.Printf("Make request to OpenAI ...")
 	// Serialize the interface to pretty-printed JSON
@@ -314,7 +363,7 @@ func (t *Tuner) makeAPIRequest(apiBody interface{}, apiKey string, counter int, 
 
 	// Set the Content-Type and Authorization headers
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", t.config.OpenAiApiKey))
 
 	// Send the request using the default HTTP client
 	client := &http.Client{}

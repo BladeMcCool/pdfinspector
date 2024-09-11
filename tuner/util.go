@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"pdfinspector/config"
 	"pdfinspector/filesystem"
+	"pdfinspector/job"
 )
 
 // validateJSON checks if a string contains valid JSON
@@ -100,11 +101,11 @@ func checkForPreexistingAPIOutput(directory, filenameFragment string, counter in
 	}
 }
 
-func WriteAttemptResumedataJSON(content, layout, style, outputDir string, attemptNum int, fs filesystem.FileSystem, config *config.ServiceConfig) error {
+func WriteAttemptResumedataJSON(content string, job *job.Job, attemptNum int, fs filesystem.FileSystem, config *config.ServiceConfig) error {
 	// Step 5: Write the validated content to the filesystem in a way the resume projects json server can read it, plus locally for posterity.
 	// Assuming the file path is up and outside of the project directory
 	// Example: /home/user/output/validated_content.json
-	updatedContent, err := insertLayout(content, layout, style)
+	updatedContent, err := insertLayout(content, job.Layout, job.Style)
 	if err != nil {
 		log.Printf("Error inserting layout info: %v\n", err)
 		return err
@@ -121,7 +122,7 @@ func WriteAttemptResumedataJSON(content, layout, style, outputDir string, attemp
 		}
 		log.Println("Content successfully written to:", outputFilePath)
 	} else if config.FsType == "gcs" {
-		outputFilePath := fmt.Sprintf("%s/attempt%d.json", outputDir, attemptNum)
+		outputFilePath := fmt.Sprintf("%s/attempt%d.json", job.OutputDir, attemptNum)
 		log.Printf("writeAttemptResumedataJSON to GCS bucket, path: %s", outputFilePath)
 		err = fs.WriteFile(outputFilePath, []byte(content))
 		if err != nil {
@@ -132,7 +133,7 @@ func WriteAttemptResumedataJSON(content, layout, style, outputDir string, attemp
 	}
 
 	// Example: /home/user/output/validated_content.json
-	localOutfilePath := filepath.Join(outputDir, fmt.Sprintf("attempt%d.json", attemptNum))
+	localOutfilePath := filepath.Join(job.OutputDir, fmt.Sprintf("attempt%d.json", attemptNum))
 	err = WriteValidatedContent(updatedContent, localOutfilePath)
 	if err != nil {
 		log.Printf("Error writing content to file: %v\n", err)

@@ -38,6 +38,13 @@ type Job struct {
 	StyleOverride  string `json:"style_override"` //eg fluffy
 	Id             uuid.UUID
 
+	//pulled up or determined from the baseline or baselinejson, could be overrode (perhaps) by job.
+	Layout     string
+	Style      string
+	MainPrompt string
+	//ExpectResponseSchema interface{} //will get a json schema based on the layout.
+
+	OutputDir       string
 	AcceptableRatio float64
 	MaxAttempts     int
 	IsForAdmin      bool
@@ -47,7 +54,10 @@ type Job struct {
 }
 
 var defaultAcceptableRatio = 0.88
+
 var defaultMaxAttempts = 7
+
+//var defaultMaxAttempts = 1
 
 //	func newJob(acceptableRatio float64, maxAttempts int) *Job {
 //		job := &Job{}
@@ -66,11 +76,9 @@ var defaultMaxAttempts = 7
 //	}
 
 func NewDefaultJob() *Job {
-	return &Job{
-		Id:              uuid.New(),
-		AcceptableRatio: defaultAcceptableRatio,
-		MaxAttempts:     defaultMaxAttempts,
-	}
+	job := &Job{}
+	job.PrepareDefault()
+	return job
 }
 func (job *Job) PrepareDefault() {
 	job.Id = uuid.New()
@@ -105,7 +113,7 @@ func (job *Job) ValidateForNonAdmin() error {
 
 	// Check if the layout value is either "functional" or "chrono"
 	if layoutValue == "functional" || layoutValue == "chrono" {
-		fmt.Printf("The layout is: %s\n", layoutValue)
+		log.Printf("The layout is: %s\n", layoutValue)
 	} else {
 		return errors.New("The layout is neither 'functional' nor 'chrono'")
 	}

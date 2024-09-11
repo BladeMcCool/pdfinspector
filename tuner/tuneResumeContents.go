@@ -14,9 +14,11 @@ import (
 	"strings"
 )
 
-func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, layout, style, outputDir string, fs filesystem.FileSystem, config *config.ServiceConfig, job *job.Job, updates chan job.JobStatus) error {
+// func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, layout, style, outputDir string, fs filesystem.FileSystem, config *config.ServiceConfig, job *job.Job, updates chan job.JobStatus) error {
+func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) error {
+	log.Printf("starting TuneResumeContents for job id %s", job.Id.String())
 	SendJobUpdate(updates, "getting any JD meta")
-	jDmetaRawJSON, err := t.takeNotesOnJD(input, outputDir)
+	jDmetaRawJSON, err := t.takeNotesOnJD(job)
 	if err != nil {
 		log.Println("error taking notes on JD: ", err)
 		return err
@@ -35,13 +37,13 @@ func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, l
 		kwPrompt = "The adjusted resume data should contain as many of the following keywords as is reasonable/possible: " + strings.Join(jDMetaDecoded.Keywords, ", ") + "\n"
 	}
 	prompt_parts := []string{
-		mainPrompt,
+		job.MainPrompt,
 		"\n--- start job description ---\n",
-		input.JD,
+		job.JobDescription,
 		"\n--- end job description ---\n",
 		kwPrompt,
 		"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
-		baselineJSON,
+		job.BaselineJSON,
 	}
 
 	//perhaps the resumedata should be at the start and the instructions of what to do with it should come after? need to a/b test this stuff somehow.
@@ -56,7 +58,7 @@ func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, l
 	//}
 
 	prompt := strings.Join(prompt_parts, "")
-
+	expectResponseSchema, err := t.GetExpectedResponseJsonSchema(job.Layout)
 	// Create a map to represent the API request structure
 	data := map[string]interface{}{
 		"model": "gpt-4o-mini",
@@ -86,7 +88,7 @@ func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, l
 			"json_schema": map[string]interface{}{
 				"name":   "candidate_resume",
 				"strict": true,
-				"schema": input.ExpectResponseSchema,
+				"schema": expectResponseSchema,
 			},
 		},
 		//"max_tokens":  2000, //idk i had legit response go over 2000 because it was wordy. not sure that bug where it generated full stream of garbage happened again after putting on 'strict' tho. keep an eye on things.
@@ -98,17 +100,17 @@ func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, l
 
 	for i := 0; i < job.MaxAttempts; i++ {
 		api_request_pretty, err := serializeToJSON(data)
-		writeToFile(api_request_pretty, i, "api_request_pretty", outputDir)
+		writeToFile(api_request_pretty, i, "api_request_pretty", job.OutputDir)
 		if err != nil {
 			log.Fatalf("Failed to marshal final JSON: %v", err)
 		}
-		exists, output, err := checkForPreexistingAPIOutput(outputDir, "api_response_raw", i)
+		exists, output, err := checkForPreexistingAPIOutput(job.OutputDir, "api_response_raw", i)
 		if err != nil {
 			log.Fatalf("Error checking for pre-existing API output: %v", err)
 		}
 		if !exists {
 			SendJobUpdate(updates, fmt.Sprintf("asking for an attempt %d", i))
-			output, err = t.makeAPIRequest(data, input.APIKey, i, "api_response_raw", outputDir)
+			output, err = t.makeAPIRequest(data, i, "api_response_raw", job.OutputDir)
 		}
 
 		//openai api should have responded to our request with a json text that can be used as resumedata input. extract it.
@@ -134,24 +136,24 @@ func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, l
 		log.Printf("Got %d bytes of JSON content (at least well formed enough to be decodable) out of that last response\n", len(content))
 		SendJobUpdate(updates, fmt.Sprintf("got JSON for attempt %d, will request PDF", i))
 
-		err = WriteAttemptResumedataJSON(content, layout, style, outputDir, i, fs, config)
+		err = WriteAttemptResumedataJSON(content, job, i, t.Fs, t.config)
 
 		//we should be able to render that updated content proposal now via gotenberg + ghostscript
-		err = makePDFRequestAndSave(i, layout, outputDir, config, job)
+		err = makePDFRequestAndSave(i, t.config, job)
 		if err != nil {
 			log.Printf("Error: %v\n", err)
 		}
 		SendJobUpdate(updates, fmt.Sprintf("got PDF for attempt %d, will dump to PNG", i))
 
 		//and the ghostscript dump to pngs ...
-		err = dumpPDFToPNG(i, outputDir, config)
+		err = dumpPDFToPNG(i, job.OutputDir, t.config)
 		if err != nil {
 			log.Printf("Error during pdf to image dump: %v\n", err)
 			break
 		}
 		SendJobUpdate(updates, fmt.Sprintf("got PNGs for attempt %d, will check it", i))
 
-		result, err := inspectPNGFiles(outputDir, i)
+		result, err := inspectPNGFiles(job.OutputDir, i)
 		if err != nil {
 			log.Printf("Error inspecting png files: %v\n", err)
 			break
@@ -219,7 +221,7 @@ func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, l
 			//data["messages"] = messages
 		}
 	}
-	err = saveBestAttemptToGCS(attemptsLog, fs, config, job, updates)
+	err = saveBestAttemptToGCS(attemptsLog, t.Fs, t.config, job, updates)
 	if err != nil {
 		return err
 	}
@@ -235,8 +237,8 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 	}
 
 	bestAttemptIndex := getBestAttemptIndex(results)
-	outputDir := job.Id.String()
-	filepath := filepath.Join(outputDir, fmt.Sprintf("attempt%d.pdf", bestAttemptIndex))
+	//outputDir := job.Id.String()
+	filepath := filepath.Join(job.OutputDir, fmt.Sprintf("attempt%d.pdf", bestAttemptIndex))
 	// Check if the file exists
 	_, err := os.Stat(filepath)
 	if err != nil {
@@ -250,7 +252,8 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 	//	log.Printf("error getting %s from the local filesystem", err.Error())
 	//}
 	//
-	outputFilePath := fmt.Sprintf("%s/Resume.pdf", outputDir) //maybe can save with the principals name instead? probably output filename options should be part of the job (name explicitly, name based on candidate data field, invent a name, etc)
+	copyToFilename := "Resume.pdf"
+	outputFilePath := fmt.Sprintf("%s/%s", job.OutputDir, copyToFilename) //maybe can save with the principals name instead? probably output filename options should be part of the job (name explicitly, name based on candidate data field, invent a name, etc)
 	log.Printf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex)
 	SendJobUpdate(updates, fmt.Sprintf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex))
 	//log.Printf("writing PDF data to GCS bucket path: %s", outputFilePath)
@@ -290,7 +293,7 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 	//	return fmt.Errorf("Writer.Close: %v", err)
 	//}
 	log.Printf("saveBestAttemptToGCS believed to be complete")
-	SendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: %s/joboutput/%s", bytesCount, config.ServiceUrl, outputFilePath))
+	SendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: %s/joboutput/%s/%s", bytesCount, config.ServiceUrl, job.Id.String(), copyToFilename))
 	return nil
 }
 

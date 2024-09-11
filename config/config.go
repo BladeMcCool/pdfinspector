@@ -58,11 +58,11 @@ func GetServiceConfig() *ServiceConfig {
 		JsonServerURL:    getConfig(jsonServerURL, "JSON_SERVER_URL", "http://localhost:3002"),
 		ReactAppURL:      getConfig(reactAppURL, "REACT_APP_URL", "http://host.docker.internal:3000"),
 		OpenAiApiKey:     getConfig(openAiApiKey, "OPENAI_API_KEY", ""),
-		FsType:           getConfig(fstype, "FSTYPE", "gcs"),
+		FsType:           getConfig(fstype, "FSTYPE", "local"),
 		GcsBucket:        getConfig(gcsBucket, "GCS_BUCKET", "my-stinky-bucket"),
-		LocalPath:        getConfig(localPath, "LOCAL_PATH", "output"),
+		LocalPath:        getConfig(localPath, "LOCAL_PATH", "outputs"),
 		Mode:             getConfig(mode, "MODE", "server"), // Default to "server"
-		UseSystemGs:      getConfigBool(useSystemGs, "USE_SYSTEM_GS", true),
+		UseSystemGs:      getConfigBool(useSystemGs, "USE_SYSTEM_GS", false),
 		AdminKey:         getConfig(nil, "ADMIN_KEY", ""),            // Default to "server"
 		UserCreditDeduct: getConfigInt(nil, "USER_CREDIT_DEDUCT", 1), // Default to "server"
 	}
@@ -75,19 +75,21 @@ func GetServiceConfig() *ServiceConfig {
 	if config.FsType == "local" && config.LocalPath == "" {
 		log.Fatal("Local path must be specified for local filesystem")
 	}
-	if config.OpenAiApiKey == "" {
-		log.Fatal("An Open AI (what a misnomer lol) API Key is required for the server to be able to do anything interesting.")
-	}
+	if config.Mode == "server" {
+		if config.OpenAiApiKey == "" {
+			log.Fatal("An Open AI (what a misnomer lol) API Key is required for the server to be able to do anything interesting.")
+		}
 
-	url, err := getServiceURL("astute-backup-434623-h3", "us-central1", "pdfinspector")
-	if err != nil {
-		//not fatal. might not have credentials to access this.
-		log.Printf("failed to get service URL : %s", err.Error())
-	}
-	config.ServiceUrl = url
-	log.Printf("determined service url to be: %s", url)
+		url, err := getServiceURL("astute-backup-434623-h3", "us-central1", "pdfinspector")
+		if err != nil {
+			//not fatal. might not have credentials to access this.
+			log.Printf("failed to get service URL : %s", err.Error())
+		}
+		config.ServiceUrl = url
+		log.Printf("determined service url to be: %s", url)
 
-	config.ServiceListenPort = "8080"
+		config.ServiceListenPort = "8080"
+	}
 
 	return config
 }

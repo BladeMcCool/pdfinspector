@@ -24,50 +24,55 @@ func (j *jobRunner) RunJob(job *jobPackage.Job, updates chan jobPackage.JobStatu
 
 	t := j.tuner
 
-	var baselineJSON string
-	var err error
-	if baselineJSON == "" && job.Baseline != "" && job.IsForAdmin {
-		baselineJSON, err = t.GetBaselineJSON(job.Baseline)
-		if err != nil {
-			log.Fatalf("error from reading baseline JSON: %v", err)
-		}
-	} else {
-		baselineJSON = job.BaselineJSON //i think really this is where it should come from
-	}
-	tuner.SendJobUpdate(updates, "got baseline JSON")
+	t.PopulateJob(job, updates)
+	//
+	//var baselineJSON string
+	//var err error
+	//if baselineJSON == "" && job.Baseline != "" && job.IsForAdmin {
+	//	baselineJSON, err = t.GetBaselineJSON(job.Baseline)
+	//	if err != nil {
+	//		log.Fatalf("error from reading baseline JSON: %v", err)
+	//	}
+	//} else {
+	//	baselineJSON = job.BaselineJSON //i think really this is where it should come from
+	//}
+	//tuner.SendJobUpdate(updates, "got baseline JSON")
+	//
+	//layout, style, err := t.GetLayoutFromBaselineJSON(baselineJSON)
+	//if err != nil {
+	//	log.Fatalf("error from extracting layout from baseline JSON: %v", err)
+	//}
+	//if job.StyleOverride != "" {
+	//	style = job.StyleOverride
+	//}
+	//
+	//expectResponseSchema, err := t.GetExpectedResponseJsonSchema(layout)
+	////todo refactor this stuff lol
+	//inputTemp := &jobPackage.Input{
+	//	JD:                   job.JobDescription,
+	//	ExpectResponseSchema: expectResponseSchema,
+	//	APIKey:               j.config.OpenAiApiKey,
+	//}
+	//if err != nil {
+	//	log.Fatalf("Error reading input files: %v", err)
+	//}
+	//
+	//mainPrompt := job.CustomPrompt
+	//if mainPrompt == "" {
+	//	mainPrompt, err = t.GetDefaultPrompt(layout)
+	//	if err != nil {
+	//		log.Println("error from reading input prompt: ", err)
+	//		return
+	//	}
+	//}
+	//
+	////todo: fix this calls arguments it should probably just be one struct.
+	////outputDir := fmt.Sprintf("outputs/%s", job.Id.String())
+	//outputDir := job.Id.String() // i want to be able to change this to nest under a subdirectory but its causing all kinds of problems right now.
+	//
+	////err = t.TuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, outputDir, t.Fs, j.config, job, updates)
 
-	layout, style, err := t.GetLayoutFromBaselineJSON(baselineJSON)
-	if err != nil {
-		log.Fatalf("error from extracting layout from baseline JSON: %v", err)
-	}
-	if job.StyleOverride != "" {
-		style = job.StyleOverride
-	}
-
-	expectResponseSchema, err := t.GetExpectedResponseJsonSchema(layout)
-	//todo refactor this stuff lol
-	inputTemp := &jobPackage.Input{
-		JD:                   job.JobDescription,
-		ExpectResponseSchema: expectResponseSchema,
-		APIKey:               j.config.OpenAiApiKey,
-	}
-	if err != nil {
-		log.Fatalf("Error reading input files: %v", err)
-	}
-
-	mainPrompt := job.CustomPrompt
-	if mainPrompt == "" {
-		mainPrompt, err = t.GetDefaultPrompt(layout)
-		if err != nil {
-			log.Println("error from reading input prompt: ", err)
-			return
-		}
-	}
-
-	//todo: fix this calls arguments it should probably just be one struct.
-	//outputDir := fmt.Sprintf("outputs/%s", job.Id.String())
-	outputDir := job.Id.String() // i want to be able to change this to nest under a subdirectory but its causing all kinds of problems right now.
-	err = t.TuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, outputDir, t.Fs, j.config, job, updates)
+	err := t.TuneResumeContents(job, updates)
 	if err != nil {
 		log.Fatalf("Error from resume tuning: %v", err)
 	}

@@ -51,13 +51,17 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Use(middleware.Logger)                    // Log requests
 	router.Use(middleware.Recoverer)                 // Recover from panics
 	router.Use(middleware.Timeout(15 * time.Minute)) // Set a request timeout
-	router.Use(s.AuthMiddleware)
 
-	// Define routes
+	// Define open routes
 	router.Get("/", s.rootHandler)                 // Root handler
 	router.Get("/health", s.healthHandler)         // Health check handler
-	router.Post("/streamjob", s.streamJobHandler)  // Keep the connection open while running the job and streaming updates
 	router.Get("/joboutput/*", s.jobOutputHandler) // Get the output
+
+	// Define gated routes
+	router.Group(func(protected chi.Router) {
+		protected.Use(s.AuthMiddleware)
+		protected.Post("/streamjob", s.streamJobHandler) // Keep the connection open while running the job and streaming updates
+	})
 
 	s.router = router
 }
@@ -74,6 +78,7 @@ func (s *pdfInspectorServer) RunServer() error {
 // Handler for the root path
 func (s *pdfInspectorServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Welcome to pdf inspector.!")
+	//maybe for sake of ease we can spit out a job inputter utility page but probably that should just be a separate project in react or smth instead of some horrifying cheese here. but maybe gpt can help me cheese it up quickly. lets see.
 }
 
 // Handler for a health check endpoint
@@ -90,7 +95,6 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Invalid JSON input", http.StatusBadRequest)
 		return
 	}
-	log.Printf("here in handJobRun with job like: %#v", job)
 
 	job.PrepareDefault()
 	if isAdmin, _ := r.Context().Value("isAdmin").(bool); isAdmin == true {
@@ -182,7 +186,7 @@ func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Req
 
 	// Rejoin everything after "/jobresult/"
 	// pathParts[2:] contains everything after "/jobresult/"
-	resultPath := strings.Join(pathParts[2:], "/")
+	resultPath := strings.Join(append([]string{"outputs"}, pathParts[2:]...), "/")
 
 	// Use the rejoined path as needed
 	log.Printf("Result Path: %s\n", resultPath)
@@ -332,8 +336,11 @@ func (s *pdfInspectorServer) LoadUserKeys() {
 }
 
 func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey string) error {
+	//this is really just a best effort to create some kind of locking mechanism with gcs in the absesnce of anything stateful
+	//because i dont want to pay for a "real" solution (eg hosted database record locking or smth)
+
 	// Path to the user's credit file in GCS
-	creditFilePath := fmt.Sprintf("user-%s/credit", userKey)
+	creditFilePath := fmt.Sprintf("users/%s/credit", userKey)
 	_ = creditFilePath
 	// Step 1: Get the generation number of the credit file
 	gcsFs, ok := s.jobRunner.tuner.Fs.(*filesystem.GCSFileSystem)

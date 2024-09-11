@@ -25,7 +25,7 @@ type inspectResult struct {
 	LastPageContentRatio float64
 }
 
-func makePDFRequestAndSave(attempt int, layout, outputDir string, config *config.ServiceConfig, job *job.Job) error {
+func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.Job) error {
 	// Step 1: Create a new buffer and a multipart writer
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
@@ -45,10 +45,10 @@ func makePDFRequestAndSave(attempt int, layout, outputDir string, config *config
 		}
 		jsonPathFragment := url.PathEscape(fmt.Sprintf("%s/attempt%d", job.Id.String(), attempt))
 		fmt.Sprintf("%s/attempt%d", job.Id.String(), attempt)
-		urlToRender = fmt.Sprintf("%s/?jsonserver=%s&resumedata=%s&layout=%s", config.ReactAppURL, jsonServerHostname, jsonPathFragment, layout)
+		urlToRender = fmt.Sprintf("%s/?jsonserver=%s&resumedata=%s&layout=%s", config.ReactAppURL, jsonServerHostname, jsonPathFragment, job.Layout)
 	} else {
 		//legacy way, presumably json server is on local host or smth.
-		urlToRender = fmt.Sprintf("%s/?resumedata=attempt%d&layout=%s", config.ReactAppURL, attempt, layout)
+		urlToRender = fmt.Sprintf("%s/?resumedata=attempt%d&layout=%s", config.ReactAppURL, attempt, job.Layout)
 	}
 	_, err = io.WriteString(urlField, urlToRender)
 	if err != nil {
@@ -106,10 +106,10 @@ func makePDFRequestAndSave(attempt int, layout, outputDir string, config *config
 	}
 
 	// Step 8: Write the response body (PDF) to the output file
-	outputFilePath := filepath.Join(outputDir, fmt.Sprintf("attempt%d.pdf", attempt))
+	outputFilePath := filepath.Join(job.OutputDir, fmt.Sprintf("attempt%d.pdf", attempt))
 
 	// Create the output directory if it doesn't exist
-	err = os.MkdirAll(outputDir, 0755)
+	err = os.MkdirAll(job.OutputDir, 0755)
 	if err != nil {
 		return fmt.Errorf("failed to create output directory: %v", err)
 	}

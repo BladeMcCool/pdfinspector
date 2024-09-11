@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"pdfinspector/config"
-	"pdfinspector/job"
+	jobPackage "pdfinspector/job"
 	"pdfinspector/tuner"
 )
 
@@ -79,7 +79,7 @@ func cliRunJob(config *config.ServiceConfig) {
 	baseline := "chrono"
 	//baseline := "resumeproject"
 	//baseline := "retailchrono"
-	outputDir := "outputs"
+	//outputDir := "outputs"
 	styleOverride := "fluffy"
 	//styleOverride := ""
 
@@ -96,16 +96,19 @@ func cliRunJob(config *config.ServiceConfig) {
 		style = styleOverride
 	}
 
-	input, err := job.ReadInput(inputDir)
+	input, err := jobPackage.ReadInput(inputDir)
 	if err != nil {
 		log.Fatalf("Error reading input files: %v", err)
 	}
-
-	input.ExpectResponseSchema, err = t.GetExpectedResponseJsonSchema(layout)
-	if err != nil {
-		log.Println("error from getExpectedResponseJsonSchema: ", err)
-		return
+	if input.APIKey != "" {
+		config.OpenAiApiKey = input.APIKey
 	}
+
+	//input.ExpectResponseSchema, err = t.GetExpectedResponseJsonSchema(layout)
+	//if err != nil {
+	//	log.Println("error from getExpectedResponseJsonSchema: ", err)
+	//	return
+	//}
 
 	mainPrompt, err := getInputPrompt(inputDir)
 	if err != nil {
@@ -120,8 +123,17 @@ func cliRunJob(config *config.ServiceConfig) {
 		}
 	}
 
-	//todo: fix this calls arguments it should probably just be one struct.
-	err = t.TuneResumeContents(input, mainPrompt, baselineJSON, layout, style, outputDir, t.Fs, config, job.NewDefaultJob(), nil)
+	// this func could possibly leverage tuner.PopulateJob but doing that also might be annoying. tbd.
+	job := jobPackage.NewDefaultJob()
+	job.JobDescription = input.JD
+	job.Layout = layout
+	job.Style = style
+	job.MainPrompt = mainPrompt
+	job.BaselineJSON = baselineJSON
+	//job.OutputDir = filepath.Join(config.LocalPath, job.Id.String()) //should not use this for things that end up on gcs from a windows machine b/c it gets a backslash. idk probably should have local and gcs dirs saved separately so local can use local path sep and gcs always use forward slash.
+	job.OutputDir = fmt.Sprintf("%s/%s", config.LocalPath, job.Id.String())
+
+	err = t.TuneResumeContents(job, nil)
 	if err != nil {
 		log.Fatalf("Error from resume tuning: %v", err)
 	}
