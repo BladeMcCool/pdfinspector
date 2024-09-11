@@ -24,18 +24,15 @@ func (j *jobRunner) RunJob(job *jobPackage.Job, updates chan jobPackage.JobStatu
 
 	t := j.tuner
 
-	baselineJSON := job.BaselineJSON //i think really this is where it should come from
+	var baselineJSON string
 	var err error
-	if baselineJSON == "" && job.IsForAdmin {
-		//but for some testing (and the initial implementation, predating the json server even, where my personal info was baked into the react project ... anyway, that got moved to the json server and some variants got names. but that should all get deprecated i think)
+	if baselineJSON == "" && job.Baseline != "" && job.IsForAdmin {
 		baselineJSON, err = t.GetBaselineJSON(job.Baseline)
 		if err != nil {
 			log.Fatalf("error from reading baseline JSON: %v", err)
 		}
 	} else {
-		tuner.SendJobUpdate(updates, "non admin can't use named baselines.")
-		log.Printf("non admin can't use named baselines.")
-		return
+		baselineJSON = job.BaselineJSON //i think really this is where it should come from
 	}
 	tuner.SendJobUpdate(updates, "got baseline JSON")
 
@@ -68,7 +65,9 @@ func (j *jobRunner) RunJob(job *jobPackage.Job, updates chan jobPackage.JobStatu
 	}
 
 	//todo: fix this calls arguments it should probably just be one struct.
-	err = t.TuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, job.Id.String(), t.Fs, j.config, job, updates)
+	//outputDir := fmt.Sprintf("outputs/%s", job.Id.String())
+	outputDir := job.Id.String() // i want to be able to change this to nest under a subdirectory but its causing all kinds of problems right now.
+	err = t.TuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, outputDir, t.Fs, j.config, job, updates)
 	if err != nil {
 		log.Fatalf("Error from resume tuning: %v", err)
 	}

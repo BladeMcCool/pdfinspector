@@ -98,7 +98,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 	} else {
 		err := job.ValidateForNonAdmin()
 		if err != nil {
-			log.Printf("invalid job: %v", job)
+			log.Printf("invalid job %v", err)
 			http.Error(w, "Bad Reqeust: invalid job", http.StatusBadRequest)
 			return
 		}
@@ -271,7 +271,7 @@ func (s *pdfInspectorServer) AuthMiddleware(next http.Handler) http.Handler {
 		// Optional: You can parse or verify sessionData here if needed
 
 		// If everything is valid, proceed to the next handler
-		ctx := context.WithValue(r.Context(), "userKey", "bearerToken")
+		ctx := context.WithValue(r.Context(), "userKey", bearerToken)
 
 		// Create a new request with the updated context
 		r = r.WithContext(ctx)

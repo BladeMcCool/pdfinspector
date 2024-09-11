@@ -251,7 +251,8 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 	//}
 	//
 	outputFilePath := fmt.Sprintf("%s/Resume.pdf", outputDir) //maybe can save with the principals name instead? probably output filename options should be part of the job (name explicitly, name based on candidate data field, invent a name, etc)
-	//SendJobUpdate(updates, fmt.Sprintf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex))
+	log.Printf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex)
+	SendJobUpdate(updates, fmt.Sprintf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex))
 	//log.Printf("writing PDF data to GCS bucket path: %s", outputFilePath)
 	//err = fs.WriteFile(outputFilePath, data)
 	//if err != nil {

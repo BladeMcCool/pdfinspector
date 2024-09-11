@@ -79,7 +79,7 @@ func cliRunJob(config *config.ServiceConfig) {
 	baseline := "chrono"
 	//baseline := "resumeproject"
 	//baseline := "retailchrono"
-	outputDir := "output"
+	outputDir := "outputs"
 	styleOverride := "fluffy"
 	//styleOverride := ""
 
