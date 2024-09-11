@@ -127,9 +127,21 @@ func cliRunJob(config *config.ServiceConfig) {
 	}
 }
 
-type Result struct {
-	Status  string `json:"status"`
-	Details string `json:"details"`
+func getInputPrompt(directory string) (string, error) {
+	// Construct the filename
+	filepath := filepath.Join(directory, "prompt.txt")
+
+	// Check if the file exists
+	_, err := os.Stat(filepath)
+	if err == nil {
+		// File exists, read its contents
+		data, err := os.ReadFile(filepath)
+		if err != nil {
+			return "", fmt.Errorf("prompt file existed but failed to read it from file system??%v", err)
+		}
+		return string(data), nil
+	}
+	return "", nil
 }
 
 // worker simulates a worker that processes jobs.
@@ -656,23 +668,6 @@ type Result struct {
 //	log.Println("JD Info Content successfully written to:", outputFilePath)
 //	return content, nil
 //}
-
-func getInputPrompt(directory string) (string, error) {
-	// Construct the filename
-	filepath := filepath.Join(directory, "prompt.txt")
-
-	// Check if the file exists
-	_, err := os.Stat(filepath)
-	if err == nil {
-		// File exists, read its contents
-		data, err := os.ReadFile(filepath)
-		if err != nil {
-			return "", fmt.Errorf("prompt file existed but failed to read it from file system??%v", err)
-		}
-		return string(data), nil
-	}
-	return "", nil
-}
 
 //
 //func getDefaultPrompt(layout string) (string, error) {

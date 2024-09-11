@@ -1,22 +1,32 @@
 package job
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"log"
 	"os"
 	"path/filepath"
+	//"pdfinspector/tuner"
+	//"pdfinspector/tuner"
+	//"pdfinspector/tuner"
 )
 
-// JobResult represents a job result with its status and result data.
-type JobResult struct {
-	ID     int
-	Status string
-	Result string
-}
+//type JobResult struct {
+//	ID     int
+//	Status string
+//	Result string
+//}
 
+// todo maybe this could include a flag about if it was an error so that we can detect that at the server and refund them?
 type JobStatus struct {
 	Message string `json:"message"`
+}
+
+type JobResult struct {
+	Status  string `json:"status"`
+	Details string `json:"details"`
 }
 
 // Job represents the structure for a job
@@ -30,13 +40,14 @@ type Job struct {
 
 	AcceptableRatio float64
 	MaxAttempts     int
+	IsForAdmin      bool
 	//acceptableRatio = 0.88
 	//maxAttempts     = 1
 	//anything else we want as options per-job? i was thinking include_bio might be a good option. (todo: ability to not show it on functional, ability to show it on chrono, and then json schema tuning depending on if it is set or not so that the gpt can know to specify it - and dont include it when it shouldn't!)
 }
 
 var defaultAcceptableRatio = 0.88
-var defaultMaxAttempts = 1
+var defaultMaxAttempts = 7
 
 //	func newJob(acceptableRatio float64, maxAttempts int) *Job {
 //		job := &Job{}
@@ -65,6 +76,55 @@ func (job *Job) PrepareDefault() {
 	job.Id = uuid.New()
 	job.AcceptableRatio = defaultAcceptableRatio
 	job.MaxAttempts = defaultMaxAttempts
+}
+func (job *Job) ValidateForNonAdmin() error {
+	//this is just more of a thought than perhaps a good idea. the failure modes can be many and we should just return api credits if job failed. todo.
+	if job.Baseline != "" {
+		return errors.New("disallowed")
+	}
+	if job.BaselineJSON == "" {
+		return errors.New("disallowed")
+	}
+
+	var result interface{}
+	if err := json.Unmarshal([]byte(job.BaselineJSON), &result); err != nil {
+		return fmt.Errorf("error decoding JSON into interface{}: %v", err)
+	}
+
+	// Type assertion: result is expected to be a map[string]interface{}
+	data, ok := result.(map[string]interface{})
+	if !ok {
+		return errors.New("Result is not a valid map")
+	}
+
+	// Extract the "layout" field from the map
+	layoutValue, ok := data["layout"].(string)
+	if !ok {
+		return errors.New("Layout key not found or is not a string")
+	}
+
+	// Check if the layout value is either "functional" or "chrono"
+	if layoutValue == "functional" || layoutValue == "chrono" {
+		fmt.Printf("The layout is: %s\n", layoutValue)
+	} else {
+		return errors.New("The layout is neither 'functional' nor 'chrono'")
+	}
+	// List of valid styles (expandable in the future)
+	validStyles := map[string]bool{
+		"fluffy": true, // Starting with only "fluffy"
+	}
+
+	// Check if the "style" field exists and is valid
+	if styleValue, ok := data["style"]; ok {
+		styleStr, ok := styleValue.(string)
+		if !ok {
+			return errors.New("Style key is present but not a valid string")
+		}
+		if !validStyles[styleStr] {
+			return fmt.Errorf("Invalid style: %s", styleStr)
+		}
+	}
+	return nil
 }
 
 // Input struct to hold the contents of jd.txt and expect_response.json

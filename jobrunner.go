@@ -26,12 +26,16 @@ func (j *jobRunner) RunJob(job *jobPackage.Job, updates chan jobPackage.JobStatu
 
 	baselineJSON := job.BaselineJSON //i think really this is where it should come from
 	var err error
-	if baselineJSON == "" {
+	if baselineJSON == "" && job.IsForAdmin {
 		//but for some testing (and the initial implementation, predating the json server even, where my personal info was baked into the react project ... anyway, that got moved to the json server and some variants got names. but that should all get deprecated i think)
 		baselineJSON, err = t.GetBaselineJSON(job.Baseline)
 		if err != nil {
 			log.Fatalf("error from reading baseline JSON: %v", err)
 		}
+	} else {
+		tuner.SendJobUpdate(updates, "non admin can't use named baselines.")
+		log.Printf("non admin can't use named baselines.")
+		return
 	}
 	tuner.SendJobUpdate(updates, "got baseline JSON")
 

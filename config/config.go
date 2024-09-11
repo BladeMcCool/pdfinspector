@@ -25,6 +25,8 @@ type ServiceConfig struct {
 	ServiceUrl        string
 	UseSystemGs       bool //in the deployed environment we will bake a gs into the image that runs this part, so we can just use a 'gs' command locally.
 	ServiceListenPort string
+	AdminKey          string
+	UserCreditDeduct  int
 }
 
 // GetServiceConfig function to return a pointer to serviceConfig
@@ -52,15 +54,17 @@ func GetServiceConfig() *ServiceConfig {
 
 	// Populate the serviceConfig struct
 	config := &ServiceConfig{
-		GotenbergURL:  getConfig(gotenbergURL, "GOTENBERG_URL", "http://localhost:80"),
-		JsonServerURL: getConfig(jsonServerURL, "JSON_SERVER_URL", "http://localhost:3002"),
-		ReactAppURL:   getConfig(reactAppURL, "REACT_APP_URL", "http://host.docker.internal:3000"),
-		OpenAiApiKey:  getConfig(openAiApiKey, "OPENAI_API_KEY", ""),
-		FsType:        getConfig(fstype, "FSTYPE", "gcs"),
-		GcsBucket:     getConfig(gcsBucket, "GCS_BUCKET", "my-stinky-bucket"),
-		LocalPath:     getConfig(localPath, "LOCAL_PATH", "output"),
-		Mode:          getConfig(mode, "MODE", "server"), // Default to "server"
-		UseSystemGs:   getConfigBool(useSystemGs, "USE_SYSTEM_GS", true),
+		GotenbergURL:     getConfig(gotenbergURL, "GOTENBERG_URL", "http://localhost:80"),
+		JsonServerURL:    getConfig(jsonServerURL, "JSON_SERVER_URL", "http://localhost:3002"),
+		ReactAppURL:      getConfig(reactAppURL, "REACT_APP_URL", "http://host.docker.internal:3000"),
+		OpenAiApiKey:     getConfig(openAiApiKey, "OPENAI_API_KEY", ""),
+		FsType:           getConfig(fstype, "FSTYPE", "gcs"),
+		GcsBucket:        getConfig(gcsBucket, "GCS_BUCKET", "my-stinky-bucket"),
+		LocalPath:        getConfig(localPath, "LOCAL_PATH", "output"),
+		Mode:             getConfig(mode, "MODE", "server"), // Default to "server"
+		UseSystemGs:      getConfigBool(useSystemGs, "USE_SYSTEM_GS", true),
+		AdminKey:         getConfig(nil, "ADMIN_KEY", ""),            // Default to "server"
+		UserCreditDeduct: getConfigInt(nil, "USER_CREDIT_DEDUCT", 1), // Default to "server"
 	}
 
 	//Validation
@@ -91,7 +95,7 @@ func GetServiceConfig() *ServiceConfig {
 // todo: investigate if we can try out that generic stuff so that i dont have to have 2 versions of a function one for string and one for bool.
 // Helper function to get value from CLI args, env vars, or default
 func getConfig(cliValue *string, envVar string, defaultValue string) string {
-	if *cliValue != "" {
+	if cliValue != nil && *cliValue != "" {
 		return *cliValue
 	}
 	if value, exists := os.LookupEnv(envVar); exists {
@@ -106,6 +110,22 @@ func getConfigBool(cliValue *bool, envVar string, defaultValue bool) bool {
 	} else if envVal, exists := os.LookupEnv(envVar); exists {
 		// Otherwise, check if the environment variable exists and is parseable as a bool
 		parsedValue, err := strconv.ParseBool(envVal)
+		if err != nil {
+			return defaultValue
+		}
+		return parsedValue
+	}
+
+	// If neither is provided, return the default value
+	return defaultValue
+}
+func getConfigInt(cliValue *int, envVar string, defaultValue int) int {
+	// First, check if the CLI value is provided (and non-zero, assuming 0 means no value provided)
+	if cliValue != nil && *cliValue != 0 {
+		return *cliValue
+	} else if envVal, exists := os.LookupEnv(envVar); exists {
+		// Otherwise, check if the environment variable exists and is parseable as an integer
+		parsedValue, err := strconv.Atoi(envVal)
 		if err != nil {
 			return defaultValue
 		}

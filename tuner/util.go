@@ -19,8 +19,8 @@ func validateJSON(data string) error {
 	return nil
 }
 
-// decodeJSON takes a JSON string and returns a deserialized object as an interface{}.
-func decodeJSON(data string) (interface{}, error) {
+// DecodeJSON takes a JSON string and returns a deserialized object as an interface{}.
+func DecodeJSON(data string) (interface{}, error) {
 	var js json.RawMessage
 
 	// Unmarshal the JSON string into json.RawMessage to verify its validity

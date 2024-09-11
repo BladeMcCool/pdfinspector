@@ -95,7 +95,7 @@ func (t *Tuner) takeNotesOnJD(input *job.Input, outputDir string) (string, error
 		log.Fatalf("failed to read expect_response.json: %v", err)
 	}
 	// Validate the JSON content
-	jDResponseSchema, err := decodeJSON(string(jDResponseSchemaRaw))
+	jDResponseSchema, err := DecodeJSON(string(jDResponseSchemaRaw))
 	if err != nil {
 		log.Fatalf("failed to decode JSON: %v", err)
 	}
@@ -218,7 +218,7 @@ func (t *Tuner) GetExpectedResponseJsonSchema(layout string) (interface{}, error
 		return nil, fmt.Errorf("failed to read expect_response.json: %v", err)
 	}
 	// Validate the JSON content
-	expectResponseSchema, err := decodeJSON(string(expectResponseContent))
+	expectResponseSchema, err := DecodeJSON(string(expectResponseContent))
 	if err != nil {
 		return nil, err
 	}
