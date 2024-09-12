@@ -86,6 +86,7 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 			log.Println("error from reading input prompt: ", err)
 			return err
 		}
+		log.Printf("used standard main prompt: %s", mainPrompt)
 	}
 	job.MainPrompt = mainPrompt
 
