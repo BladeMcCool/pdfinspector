@@ -100,24 +100,31 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 
 	for i := 0; i < job.MaxAttempts; i++ {
 		api_request_pretty, err := serializeToJSON(data)
-		writeToFile(api_request_pretty, i, "api_request_pretty", job.OutputDir)
 		if err != nil {
-			log.Fatalf("Failed to marshal final JSON: %v", err)
+			return fmt.Errorf("Failed to marshal final JSON: %v", err)
 		}
+		err = writeToFile(api_request_pretty, i, "api_request_pretty", job.OutputDir)
+		if err != nil {
+			return fmt.Errorf("Failed to log api request locally: %v", err)
+		}
+
 		exists, output, err := checkForPreexistingAPIOutput(job.OutputDir, "api_response_raw", i)
 		if err != nil {
-			log.Fatalf("Error checking for pre-existing API output: %v", err)
+			return fmt.Errorf("Error checking for pre-existing API output: %v", err)
 		}
 		if !exists {
 			SendJobUpdate(updates, fmt.Sprintf("asking for an attempt %d", i))
 			output, err = t.makeAPIRequest(data, i, "api_response_raw", job.OutputDir)
+			if err != nil {
+				return err
+			}
 		}
 
 		//openai api should have responded to our request with a json text that can be used as resumedata input. extract it.
 		var apiResponse APIResponse
 		err = json.Unmarshal([]byte(output), &apiResponse)
 		if err != nil {
-			fmt.Printf("Error deserializing API response: %v\n", err)
+			log.Printf("Error deserializing API response: %v\n", err)
 			return err
 		}
 
@@ -130,7 +137,7 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 
 		err = validateJSON(content)
 		if err != nil {
-			fmt.Printf("Error validating JSON content: %v\n", err)
+			log.Printf("Error validating JSON content: %v\n", err)
 			return err
 		}
 		log.Printf("Got %d bytes of JSON content (at least well formed enough to be decodable) out of that last response\n", len(content))
@@ -141,29 +148,27 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 		//we should be able to render that updated content proposal now via gotenberg + ghostscript
 		err = makePDFRequestAndSave(i, t.config, job)
 		if err != nil {
-			log.Printf("Error: %v\n", err)
+			return err
 		}
 		SendJobUpdate(updates, fmt.Sprintf("got PDF for attempt %d, will dump to PNG", i))
 
 		//and the ghostscript dump to pngs ...
 		err = dumpPDFToPNG(i, job.OutputDir, t.config)
 		if err != nil {
-			log.Printf("Error during pdf to image dump: %v\n", err)
-			break
+			return fmt.Errorf("Error during pdf to image dump: %v\n", err)
 		}
 		SendJobUpdate(updates, fmt.Sprintf("got PNGs for attempt %d, will check it", i))
 
 		result, err := inspectPNGFiles(job.OutputDir, i)
 		if err != nil {
 			log.Printf("Error inspecting png files: %v\n", err)
-			break
+			return err
 		}
 		attemptsLog = append(attemptsLog, result)
 
 		log.Printf("inspect result: %#v", result)
 		if result.NumberOfPages == 0 {
-			log.Printf("no pages, idk just stop")
-			break
+			return fmt.Errorf("no pages, idk just stop")
 		}
 		SendJobUpdate(updates, fmt.Sprintf("png inspection for attempt %d: %#v", i, result))
 

@@ -211,7 +211,12 @@ func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Req
 
 	// Set the headers
 	w.Header().Set("Content-Type", mimeType)
-	w.Header().Set("Content-Disposition", "attachment; filename="+fileName)
+	disposition := "attachment"
+	if _, ok := r.URL.Query()["inline"]; ok {
+		// Set Content-Disposition to "inline" to display in the browser
+		disposition = "inline"
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf("%s; filename=%s", disposition, fileName))
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 
 	// Write the PDF content to the response

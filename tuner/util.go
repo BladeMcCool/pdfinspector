@@ -124,7 +124,7 @@ func WriteAttemptResumedataJSON(content string, job *job.Job, attemptNum int, fs
 	} else if config.FsType == "gcs" {
 		outputFilePath := fmt.Sprintf("%s/attempt%d.json", job.OutputDir, attemptNum)
 		log.Printf("writeAttemptResumedataJSON to GCS bucket, path: %s", outputFilePath)
-		err = fs.WriteFile(outputFilePath, []byte(content))
+		err = fs.WriteFile(outputFilePath, []byte(updatedContent))
 		if err != nil {
 			log.Printf("Error writing content to file: %v\n", err)
 			return err

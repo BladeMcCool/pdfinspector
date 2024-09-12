@@ -290,7 +290,7 @@ func inspectPNGFiles(outputDir string, attempt int) (inspectResult, error) {
 
 	img, err := imaging.Open(lastPage)
 	if err != nil {
-		log.Fatalf("Failed to open image: %v", err)
+		return result, fmt.Errorf("Failed to open image: %v", err)
 	}
 
 	result.LastPageContentRatio = contentRatio(img)

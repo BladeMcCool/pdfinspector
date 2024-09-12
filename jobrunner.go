@@ -24,7 +24,11 @@ func (j *jobRunner) RunJob(job *jobPackage.Job, updates chan jobPackage.JobStatu
 
 	t := j.tuner
 
-	t.PopulateJob(job, updates)
+	err := t.PopulateJob(job, updates)
+	if err != nil {
+		log.Printf("Error from PopulateJob: %v", err)
+	}
+
 	//
 	//var baselineJSON string
 	//var err error
@@ -72,9 +76,9 @@ func (j *jobRunner) RunJob(job *jobPackage.Job, updates chan jobPackage.JobStatu
 	//
 	////err = t.TuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, outputDir, t.Fs, j.config, job, updates)
 
-	err := t.TuneResumeContents(job, updates)
+	err = t.TuneResumeContents(job, updates)
 	if err != nil {
-		log.Fatalf("Error from resume tuning: %v", err)
+		log.Printf("Error from resume tuning: %v", err)
 	}
 
 	// Simulate job processing

@@ -55,7 +55,7 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 	if job.BaselineJSON == "" && job.Baseline != "" && job.IsForAdmin {
 		baselineJSON, err := t.GetBaselineJSON(job.Baseline)
 		if err != nil {
-			log.Fatalf("error from reading baseline JSON: %v", err)
+			return fmt.Errorf("error from reading baseline JSON: %v", err)
 		}
 		job.BaselineJSON = baselineJSON
 	}
@@ -63,7 +63,7 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 
 	layout, style, err := t.GetLayoutFromBaselineJSON(job.BaselineJSON)
 	if err != nil {
-		log.Fatalf("error from extracting layout from baseline JSON: %v", err)
+		return fmt.Errorf("error from extracting layout from baseline JSON: %v", err)
 	}
 	if job.StyleOverride != "" {
 		style = job.StyleOverride
@@ -104,13 +104,13 @@ func (t *Tuner) GetBaselineJSON(baseline string) (string, error) {
 	jsonRequestURL := fmt.Sprintf("%s?baseline=%s", t.config.JsonServerURL, baseline)
 	resp, err := http.Get(jsonRequestURL)
 	if err != nil {
-		log.Fatalf("Failed to make the HTTP request: %v", err)
+		return "", fmt.Errorf("Failed to make the HTTP request: %v", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalf("Failed to read the response body: %v", err)
+		return "", fmt.Errorf("Failed to read the response body: %v", err)
 	}
 	log.Printf("got %d bytes of json from the json-server via %s\n", len(body), jsonRequestURL)
 	return string(body), nil
@@ -141,12 +141,12 @@ func (t *Tuner) takeNotesOnJD(job *job.Job) (string, error) {
 	//JDResponseFormat, err := os.ReadFile(filepath.Join("response_templates", "jdinfo.json"))
 	jDResponseSchemaRaw, err := os.ReadFile(filepath.Join("response_templates", "jdinfo-schema.json"))
 	if err != nil {
-		log.Fatalf("failed to read expect_response.json: %v", err)
+		return "", fmt.Errorf("failed to read expect_response.json: %v", err)
 	}
 	// Validate the JSON content
 	jDResponseSchema, err := DecodeJSON(string(jDResponseSchemaRaw))
 	if err != nil {
-		log.Fatalf("failed to decode JSON: %v", err)
+		return "", fmt.Errorf("failed to decode JSON: %v", err)
 	}
 	//if err := validateJSON(string(jDResponseSchemaRaw)); err != nil {
 	//	return err
@@ -196,17 +196,17 @@ func (t *Tuner) takeNotesOnJD(job *job.Job) (string, error) {
 	api_request_pretty, err := serializeToJSON(apirequest)
 	writeToFile(api_request_pretty, 0, "jd_info_request_pretty", job.OutputDir)
 	if err != nil {
-		log.Fatalf("Failed to marshal final JSON: %v", err)
+		return "", fmt.Errorf("Failed to marshal final JSON: %v", err)
 	}
 
 	exists, output, err := checkForPreexistingAPIOutput(job.OutputDir, "jd_info_response_raw", 0)
 	if err != nil {
-		log.Fatalf("Error checking for pre-existing API output: %v", err)
+		return "", fmt.Errorf("Error checking for pre-existing API output: %v", err)
 	}
 	if !exists {
 		output, err = t.makeAPIRequest(apirequest, 0, "jd_info_response_raw", job.OutputDir)
 		if err != nil {
-			log.Fatalf("Error making API request: %v", err)
+			return "", fmt.Errorf("Error making API request: %v", err)
 		}
 	}
 
@@ -214,26 +214,26 @@ func (t *Tuner) takeNotesOnJD(job *job.Job) (string, error) {
 	var apiResponse APIResponse
 	err = json.Unmarshal([]byte(output), &apiResponse)
 	if err != nil {
-		log.Fatalf("Error deserializing API response: %v\n", err)
+		return "", fmt.Errorf("Error deserializing API response: %v\n", err)
 	}
 
 	//Extract the message content
 	if len(apiResponse.Choices) == 0 {
-		log.Fatalf("No choices found in the API response")
+		return "", fmt.Errorf("No choices found in the API response")
 	}
 
 	content := apiResponse.Choices[0].Message.Content
 
 	err = validateJSON(content)
 	if err != nil {
-		log.Fatalf("Error validating JSON content: %v\n", err)
+		return "", fmt.Errorf("Error validating JSON content: %v\n", err)
 	}
 	log.Printf("Got %d bytes of JSON content about the JD (at least well formed enough to be decodable) out of that last response\n", len(content))
 
 	outputFilePath := filepath.Join(job.OutputDir, "jdinfo-out.json")
 	err = WriteValidatedContent(content, outputFilePath)
 	if err != nil {
-		log.Fatalf("Error writing content to file: %v\n", err)
+		return "", fmt.Errorf("Error writing content to file: %v\n", err)
 	}
 	log.Println("JD Info Content successfully written to:", outputFilePath)
 	return content, nil
