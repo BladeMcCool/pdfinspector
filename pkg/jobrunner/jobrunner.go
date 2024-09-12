@@ -1,18 +1,18 @@
-package main
+package jobrunner
 
 import (
 	"log"
-	"pdfinspector/config"
-	jobPackage "pdfinspector/job"
-	"pdfinspector/tuner"
+	"pdfinspector/pkg/config"
+	"pdfinspector/pkg/job"
+	"pdfinspector/pkg/tuner"
 )
 
-type jobRunner struct {
-	config *config.ServiceConfig
-	tuner  *tuner.Tuner
+type JobRunner struct {
+	Config *config.ServiceConfig
+	Tuner  *tuner.Tuner
 }
 
-func (j *jobRunner) RunJob(job *jobPackage.Job, updates chan jobPackage.JobStatus) {
+func (j *JobRunner) RunJob(job *job.Job, updates chan job.JobStatus) {
 	if updates != nil {
 		defer close(updates)
 	}
@@ -22,7 +22,7 @@ func (j *jobRunner) RunJob(job *jobPackage.Job, updates chan jobPackage.JobStatu
 	//mu.Unlock()
 	log.Printf("do something with this job: %#v", job)
 
-	t := j.tuner
+	t := j.Tuner
 
 	err := t.PopulateJob(job, updates)
 	if err != nil {
@@ -93,12 +93,11 @@ func (j *jobRunner) RunJob(job *jobPackage.Job, updates chan jobPackage.JobStatu
 	//}
 }
 
-func (j *jobRunner) RunJobStreaming(job *jobPackage.Job) chan jobPackage.JobStatus {
+func (j *JobRunner) RunJobStreaming(inputJob *job.Job) chan job.JobStatus {
 	//job.Id = uuid.New()
-	log.Printf("running job %s", job.Id.String())
-
-	updates := make(chan jobPackage.JobStatus)
-	go j.RunJob(job, updates)
+	log.Printf("running job %s", inputJob.Id.String())
+	updates := make(chan job.JobStatus)
+	go j.RunJob(inputJob, updates)
 	//j.RunJob(job, nil)
 
 	//// Add job to queue

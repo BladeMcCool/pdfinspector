@@ -23,6 +23,9 @@ import (
 type JobStatus struct {
 	Message string `json:"message"`
 }
+type Hamburgers struct {
+	Message string `json:"message"`
+}
 
 type JobResult struct {
 	Status  string `json:"status"`

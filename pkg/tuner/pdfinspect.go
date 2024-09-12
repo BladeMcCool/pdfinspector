@@ -13,8 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"pdfinspector/config"
-	"pdfinspector/job"
+	"pdfinspector/pkg/config"
+	"pdfinspector/pkg/job"
 	"sort"
 	"strings"
 )

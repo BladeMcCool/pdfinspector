@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bufio"
@@ -15,10 +15,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"pdfinspector/config"
-	"pdfinspector/filesystem"
-	jobPackage "pdfinspector/job"
-	"pdfinspector/tuner"
+	"pdfinspector/pkg/config"
+	"pdfinspector/pkg/filesystem"
+	"pdfinspector/pkg/job"
+	"pdfinspector/pkg/jobrunner"
+	"pdfinspector/pkg/tuner"
 	"strconv"
 	"strings"
 	"time"
@@ -27,16 +28,16 @@ import (
 type pdfInspectorServer struct {
 	config    *config.ServiceConfig
 	router    *chi.Mux
-	jobRunner *jobRunner
+	jobRunner *jobrunner.JobRunner
 	userKeys  map[string]bool // To store the loaded user API keys
 }
 
-func newPdfInspectorServer(config *config.ServiceConfig) *pdfInspectorServer {
+func NewPdfInspectorServer(config *config.ServiceConfig) *pdfInspectorServer {
 	server := &pdfInspectorServer{
 		config: config,
-		jobRunner: &jobRunner{
-			config: config,
-			tuner:  tuner.NewTuner(config),
+		jobRunner: &jobrunner.JobRunner{
+			Config: config,
+			Tuner:  tuner.NewTuner(config),
 		},
 	}
 	server.initRoutes()
@@ -90,24 +91,24 @@ func (s *pdfInspectorServer) healthHandler(w http.ResponseWriter, r *http.Reques
 func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("here in streamJobHandler")
 
-	var job jobPackage.Job
-	if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
+	var inputJob job.Job
+	if err := json.NewDecoder(r.Body).Decode(&inputJob); err != nil {
 		http.Error(w, "Invalid JSON input", http.StatusBadRequest)
 		return
 	}
 
-	job.PrepareDefault()
+	inputJob.PrepareDefault()
 	if isAdmin, _ := r.Context().Value("isAdmin").(bool); isAdmin == true {
-		job.IsForAdmin = true
+		inputJob.IsForAdmin = true
 	} else {
-		err := job.ValidateForNonAdmin()
+		err := inputJob.ValidateForNonAdmin()
 		if err != nil {
-			log.Printf("invalid job %v", err)
-			http.Error(w, "Bad Reqeust: invalid job", http.StatusBadRequest)
+			log.Printf("invalid inputJob %v", err)
+			http.Error(w, "Bad Reqeust: invalid inputJob", http.StatusBadRequest)
 			return
 		}
 		userKey, _ := r.Context().Value("userKey").(string)
-		//todo: if the job fails return credit.
+		//todo: if the inputJob fails return credit.
 		err = s.deductUserCredit(r.Context(), userKey)
 		if err != nil {
 			http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
@@ -120,14 +121,14 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.WriteHeader(http.StatusOK)
 
-	//// Create a channel to communicate job status updates
+	//// Create a channel to communicate inputJob status updates
 	//statusChan := make(chan JobStatus)
 
-	//// Add job to queue
-	//how about we call to a job runner? which can be a server property and have a tuner already set in it.
-	statusChan := s.jobRunner.RunJobStreaming(&job)
+	//// Add inputJob to queue
+	//how about we call to a inputJob runner? which can be a server property and have a tuner already set in it.
+	statusChan := s.jobRunner.RunJobStreaming(&inputJob)
 
-	//go runJob(&job, s.config, statusChan)
+	//go runJob(&inputJob, s.config, statusChan)
 
 	// Stream status updates to the client
 	for status := range statusChan {
@@ -153,10 +154,10 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	// Final result after job completion
-	finalResult := jobPackage.JobResult{
+	// Final result after inputJob completion
+	finalResult := job.JobResult{
 		Status:  "Completed",
-		Details: "The job was successfully completed.",
+		Details: "The inputJob was successfully completed.",
 	}
 
 	// Marshal the final result to JSON
@@ -191,7 +192,7 @@ func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Req
 	// Use the rejoined path as needed
 	log.Printf("Result Path: %s\n", resultPath)
 
-	data, err := s.jobRunner.tuner.Fs.ReadFile(resultPath)
+	data, err := s.jobRunner.Tuner.Fs.ReadFile(resultPath)
 	if err != nil {
 		http.Error(w, "Could not read file from GCS", http.StatusBadRequest)
 		return
@@ -348,7 +349,7 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 	creditFilePath := fmt.Sprintf("users/%s/credit", userKey)
 	_ = creditFilePath
 	// Step 1: Get the generation number of the credit file
-	gcsFs, ok := s.jobRunner.tuner.Fs.(*filesystem.GCSFileSystem)
+	gcsFs, ok := s.jobRunner.Tuner.Fs.(*filesystem.GCSFileSystem)
 	_ = gcsFs
 	if !ok {
 		// Handle the error if the type assertion fails

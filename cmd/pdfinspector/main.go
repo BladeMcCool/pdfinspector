@@ -6,9 +6,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"pdfinspector/config"
-	jobPackage "pdfinspector/job"
-	"pdfinspector/tuner"
+	"pdfinspector/pkg/config"
+	jobPackage "pdfinspector/pkg/job"
+	"pdfinspector/pkg/server"
+	"pdfinspector/pkg/tuner"
 )
 
 // Global variables for job management
@@ -55,7 +56,7 @@ func main() {
 	//go worker(config)
 
 	// Web server mode
-	server := newPdfInspectorServer(config)
+	server := server.NewPdfInspectorServer(config)
 	server.RunServer()
 
 	//http.HandleFunc("/submitjob", handleJobSubmission)

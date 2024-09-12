@@ -8,9 +8,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"pdfinspector/config"
-	"pdfinspector/filesystem"
-	"pdfinspector/job"
+	"pdfinspector/pkg/config"
+	"pdfinspector/pkg/filesystem"
+	"pdfinspector/pkg/job"
 	"strings"
 )
 
