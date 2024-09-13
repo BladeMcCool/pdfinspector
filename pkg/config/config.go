@@ -45,13 +45,6 @@ func GetServiceConfig() *ServiceConfig {
 	// Parse CLI flags
 	flag.Parse()
 
-	//var useSystemGsEnvVar
-	//useSystemGsX, err := strconv.ParseBool(getConfig(useSystemGs, "USE_SYSTEM_GS", "false"))
-	//if err == nil {
-	//	log.Fatalf("%v", err)
-	//}
-	//, // Default to "server"
-
 	// Populate the serviceConfig struct
 	config := &ServiceConfig{
 		GotenbergURL:     getConfig(gotenbergURL, "GOTENBERG_URL", "http://localhost:80"),

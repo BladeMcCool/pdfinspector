@@ -136,13 +136,6 @@ func issueCreditsToNewUsers(client *storage.Client, users map[string]bool, bucke
 			// User doesn't exist, create directory and issue credit
 			userDir := userDirPrefix + userID + "/"
 
-			//// Create an empty object to represent the directory (GCS is flat, so the "/" is just part of the object name)
-			//obj := bucket.Object(userDir)
-			//w := obj.NewWriter(ctx)
-			//if err := w.Close(); err != nil {
-			//	return fmt.Errorf("failed to create directory for user %s: %v", userID, err)
-			//}
-
 			// Create the "credit" file with the number of credits
 			creditFile := bucket.Object(userDir + "credit")
 			w := creditFile.NewWriter(ctx)

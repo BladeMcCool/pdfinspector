@@ -9,13 +9,6 @@ import (
 	"path/filepath"
 )
 
-//// JobResult represents a job result with its status and result data.
-//type JobResult struct {
-//	ID     int
-//	Status string
-//	Result string
-//}
-
 // FileSystem interface defines methods to interact with different types of file systems.
 type FileSystem interface {
 	WriteFile(filename string, data []byte) error
@@ -31,10 +24,6 @@ type LocalFileSystem struct {
 // WriteFile writes the job result to a local file.
 func (lfs *LocalFileSystem) WriteFile(filename string, data []byte) error {
 	filePath := filepath.Join(lfs.BasePath, filename)
-	//fileData, err := json.Marshal(data)
-	//if err != nil {
-	//	return err
-	//}
 	return os.WriteFile(filePath, data, 0644)
 }
 
@@ -67,13 +56,6 @@ type GCSFileSystem struct {
 // WriteFile writes the job result to a GCS object.
 func (gcs *GCSFileSystem) WriteFile(filename string, data []byte) error {
 	ctx := context.Background()
-	//fileData, err := json.Marshal(data)
-	//if err != nil {
-	//	return err
-	//}
-	//objectPath := fmt.Sprintf("job_%d.json", jobID)
-	//objectPath := filename
-	//wc := gcs.Client.Bucket(gcs.BucketName).Object(objectPath).NewWriter(ctx)
 	wc := gcs.Client.Bucket(gcs.BucketName).Object(filename).NewWriter(ctx)
 
 	_, err := wc.Write(data)

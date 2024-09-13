@@ -122,14 +122,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.WriteHeader(http.StatusOK)
 
-	//// Create a channel to communicate inputJob status updates
-	//statusChan := make(chan JobStatus)
-
-	//// Add inputJob to queue
-	//how about we call to a inputJob runner? which can be a server property and have a tuner already set in it.
-	//statusChan :=
-	//go runJob(&inputJob, s.config, statusChan)
-
+	// Create a channel to communicate inputJob status updates
 	// Stream status updates to the client
 	for status := range s.jobRunner.RunJobStreaming(&inputJob) {
 		// Create a JobStatus struct with the status message
@@ -177,6 +170,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 }
 
 func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Request) {
+	//todo can we update this for path params now that we are using chi?
 	// Extract the path and split it by '/'
 	pathParts := strings.Split(r.URL.Path, "/")
 	// should become stuff like []string{"","jobresult","somejobid","somepdf"}
@@ -268,18 +262,6 @@ func (s *pdfInspectorServer) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// now see if they should be allowed in
-		//sessionPath := fmt.Sprintf("sessions/%s/se", bearerToken) // Assuming the session info is stored under "sessions/{token}"
-		//sessionData, err := s.jobRunner.tuner.Fs.ReadFile(sessionPath)
-		//_ = sessionData
-		//if err != nil {
-		//	// If the file is not found or there is an error, deny access
-		//	http.Error(w, "Unauthorized: Invalid session or token not found", http.StatusUnauthorized)
-		//	return
-		//}
-
-		// Optional: You can parse or verify sessionData here if needed
-
 		// If everything is valid, proceed to the next handler
 		ctx := context.WithValue(r.Context(), "userKey", bearerToken)
 
@@ -342,7 +324,7 @@ func (s *pdfInspectorServer) LoadUserKeys() {
 }
 
 func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey string) (error, int) {
-	//this is really just a best effort to create some kind of locking mechanism with gcs in the absesnce of anything stateful
+	//this is really just a best effort to create some kind of locking mechanism with gcs in the absence of anything stateful
 	//because i dont want to pay for a "real" solution (eg hosted database record locking or smth)
 
 	// Path to the user's credit file in GCS
@@ -365,7 +347,7 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 		return fmt.Errorf("failed to get generation number: %w", err), 0
 	}
 
-	//// Step 2: Read the current credit balance
+	// Step 2: Read the current credit balance
 	rc, err := client.Bucket(s.config.GcsBucket).Object(creditFilePath).NewReader(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to read credit file: %w", err), 0
@@ -376,7 +358,7 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 		return fmt.Errorf("failed to read credit file: %w", err), 0
 	}
 
-	//// Parse the credit data (assuming it's stored as a single integer)
+	// Parse the credit data (assuming it's stored as a single integer)
 	currentCredit, err := strconv.Atoi(strings.TrimSpace(string(fileData)))
 	if err != nil {
 		return fmt.Errorf("invalid credit format: %w", err), 0
@@ -384,16 +366,16 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 	//
 	log.Printf("user %s has %d credit", userKey, currentCredit)
 	deductionAmount := s.config.UserCreditDeduct
-	//// Step 3: Check if the user has enough credit
+	// Step 3: Check if the user has enough credit
 	if currentCredit-deductionAmount < 0 {
 		// Deny the request if doing so would put us into negative balance
 		return fmt.Errorf("insufficient credit, request denied"), 0
 	}
-	//
-	//// Step 4: Deduct one credit
+
+	// Step 4: Deduct one credit
 	newCredit := currentCredit - deductionAmount
-	//
-	//// Prepare the new credit data
+
+	// Prepare the new credit data
 	newCreditData := []byte(fmt.Sprintf("%d", newCredit))
 	wc := client.Bucket(s.config.GcsBucket).Object(creditFilePath).If(storage.Conditions{GenerationMatch: attrs.Generation}).NewWriter(ctx)
 	defer wc.Close()
