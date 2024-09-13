@@ -18,7 +18,7 @@ var trueVal = true
 
 // func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, layout, style, outputDir string, fs filesystem.FileSystem, config *config.ServiceConfig, job *job.Job, updates chan job.JobStatus) error {
 func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) error {
-	log.Info().Msgf("starting TuneResumeContents for job id %s", job.Id.String())
+	job.Log().Info().Msgf("starting TuneResumeContents, job from user key: %s", job.UserKey)
 	SendJobUpdate(updates, "getting any JD meta")
 	jDmetaRawJSON, err := t.takeNotesOnJD(job)
 	if err != nil {

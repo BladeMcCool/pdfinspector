@@ -131,6 +131,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 			http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
 			return
 		}
+		inputJob.UserKey = userKey
 	}
 
 	// Set headers for streaming response

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"os"
 	"path/filepath"
@@ -43,7 +44,11 @@ type Job struct {
 
 	//anything else we want as options per-job? i was thinking include_bio might be a good option. (todo: ability to not show it on functional, ability to show it on chrono, and then json schema tuning depending on if it is set or not so that the gpt can know to specify it - and dont include it when it shouldn't!)
 	//idk but i want to report to the user their balance and i dont really want to make a whole new struct for it
+	UserKey             string
 	UserCreditRemaining int
+
+	//
+	Logger *zerolog.Logger
 }
 
 var defaultAcceptableRatio = 0.88
@@ -60,6 +65,7 @@ func (job *Job) PrepareDefault() {
 	job.Id = uuid.New()
 	job.AcceptableRatio = defaultAcceptableRatio
 	job.MaxAttempts = defaultMaxAttempts
+	job.Logger = job.setLogger()
 }
 func (job *Job) ValidateForNonAdmin() error {
 	//this is just more of a thought than perhaps a good idea. the failure modes can be many and we should just return api credits if job failed. todo.
@@ -151,4 +157,15 @@ func ReadInput(dir string) (*Input, error) {
 		JD:       string(jdContent),
 		APIKey:   apiKey,
 	}, nil
+}
+
+func (job *Job) setLogger() *zerolog.Logger {
+	logger := log.With().
+		Str("job_id", job.Id.String()).
+		Logger()
+	return &logger
+}
+
+func (job *Job) Log() *zerolog.Logger {
+	return job.Logger
 }
