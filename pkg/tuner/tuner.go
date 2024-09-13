@@ -76,10 +76,10 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 	if mainPrompt == "" {
 		mainPrompt, err = t.GetDefaultPrompt(layout)
 		if err != nil {
-			log.Error().Msgf("error from reading input prompt: ", err)
+			job.Log().Error().Msgf("error from reading input prompt: ", err)
 			return err
 		}
-		log.Info().Msgf("used standard main prompt: %s", mainPrompt)
+		job.Log().Info().Msgf("used standard main prompt: %s", mainPrompt)
 	}
 	job.MainPrompt = mainPrompt
 	job.OutputDir = fmt.Sprintf("%s/%s", t.config.LocalPath, job.Id.String())

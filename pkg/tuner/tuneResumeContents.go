@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,17 +17,17 @@ var trueVal = true
 
 // func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, layout, style, outputDir string, fs filesystem.FileSystem, config *config.ServiceConfig, job *job.Job, updates chan job.JobStatus) error {
 func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) error {
-	job.Log().Info().Msgf("starting TuneResumeContents, job from user key: %s", job.UserKey)
+	job.Log().Info().Str("user_key", job.UserKey).Msgf("starting TuneResumeContents")
 	SendJobUpdate(updates, "getting any JD meta")
 	jDmetaRawJSON, err := t.takeNotesOnJD(job)
 	if err != nil {
-		log.Info().Msgf("error taking notes on JD: ", err)
+		job.Log().Info().Msgf("error taking notes on JD: ", err)
 		return err
 	}
 	jDMetaDecoded := &jdMeta{}
 	err = json.Unmarshal([]byte(jDmetaRawJSON), jDMetaDecoded)
 	if err != nil {
-		log.Error().Msgf("error extracting notes on JD: %s", err)
+		job.Log().Error().Msgf("error extracting notes on JD: %s", err)
 		return err
 	}
 	SendJobUpdate(updates, "got any JD meta")
@@ -128,7 +127,7 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 		var apiResponse APIResponse
 		err = json.Unmarshal([]byte(output), &apiResponse)
 		if err != nil {
-			log.Error().Msgf("Error deserializing API response: %v", err)
+			job.Log().Error().Msgf("Error deserializing API response: %v", err)
 			return err
 		}
 
@@ -141,10 +140,10 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 
 		err = validateJSON(content)
 		if err != nil {
-			log.Error().Msgf("Error validating JSON content: %v", err)
+			job.Log().Error().Msgf("Error validating JSON content: %v", err)
 			return err
 		}
-		log.Info().Msgf("Got %d bytes of JSON content (at least well formed enough to be decodable) out of that last response", len(content))
+		job.Log().Info().Msgf("Got %d bytes of JSON content (at least well formed enough to be decodable) out of that last response", len(content))
 		SendJobUpdate(updates, fmt.Sprintf("got JSON for attempt %d, will request PDF", i))
 
 		err = WriteAttemptResumedataJSON(content, job, i, t.Fs, t.config)
@@ -165,12 +164,12 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 
 		result, err := inspectPNGFiles(job.OutputDir, i)
 		if err != nil {
-			log.Error().Msgf("Error inspecting png files: %v", err)
+			job.Log().Error().Msgf("Error inspecting png files: %v", err)
 			return err
 		}
 		attemptsLog = append(attemptsLog, result)
 
-		log.Info().Msgf("inspect result: %#v", result)
+		job.Log().Info().Msgf("inspect result: %#v", result)
 		if result.NumberOfPages == 0 {
 			return fmt.Errorf("no pages, idk just stop")
 		}
@@ -180,18 +179,18 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 		var tryPrompt string
 		if result.NumberOfPages > 1 {
 			if result.NumberOfPages > 2 {
-				log.Info().Msgf("too many pages , this could be interesting ... (untested!)")
+				job.Log().Info().Msgf("too many pages , this could be interesting ... (untested!)")
 				tryNewPrompt = true
 				tryPrompt = fmt.Sprintf("That was way too long, reduce the amount of content to try to get it down to one full page by summarizing or removing some existing project descriptions, removing projects within companies or by shortening up the skills list. Remember to make the candidate still look great in relation to the Job Description supplied earlier!")
 			} else {
 				reduceByPct := int(((result.LastPageContentRatio / (1 + result.LastPageContentRatio)) * 100) / 2)
-				log.Info().Msgf("only one extra page .... reduce by %d%%", reduceByPct)
+				job.Log().Info().Msgf("only one extra page .... reduce by %d%%", reduceByPct)
 				tryNewPrompt = true
 				//tryPrompt = fmt.Sprintf("Too long, reduce by %d%%, by making minimal edits to the prior output as possible. Sometimes going overboard on skills makes it too long. Remember to make the candidate still look great in relation to the Job Description supplied earlier!", reduceByPct)
 				tryPrompt = fmt.Sprintf("Too long, reduce the total content length by %d%%, while still keeping the information highly relevant to the Job Description.", reduceByPct)
 			}
 		} else if result.NumberOfPages == 1 && result.LastPageContentRatio < job.AcceptableRatio {
-			log.Info().Msgf("make it longer ...")
+			job.Log().Info().Msgf("make it longer ...")
 			tryNewPrompt = true
 			//tryPrompt = fmt.Sprintf("Not long enough when rendered, was only %d%% of the page. Fill it up to between %d%% and 95%%. You can bulk up the content of existing project descriptions, add new projects within companies or by beefing up the skills list. Remember to make the candidate look even greater in relation to the Job Description supplied earlier!", int(result.LastPageContentRatio*100), int(acceptable_ratio*100))
 			increaseByPct := int((95.0 - result.LastPageContentRatio*100) / 2) //wat? idk smthin like this anyway.
@@ -200,11 +199,11 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 
 			//try to make it longer!!! - include the assistants last message in the new prompt so it can see what it did
 		} else if result.NumberOfPages == 1 && result.LastPageContentRatio >= job.AcceptableRatio {
-			log.Info().Msgf("over %d%% and still on one page? nice. we should stop (determined complete after attempt index %d).", int(job.AcceptableRatio*100), i)
+			job.Log().Info().Msgf("over %d%% and still on one page? nice. we should stop (determined complete after attempt index %d).", int(job.AcceptableRatio*100), i)
 			//we will stop now, and this will be the 'best' one found by getBestAttemptIndex later if we are saving one to gcs.
 			break
 		}
-		log.Info().Msgf("will try new prompt: %s", tryPrompt)
+		job.Log().Info().Msgf("will try new prompt: %s", tryPrompt)
 		if tryNewPrompt {
 			//not sure what the best approach is, to only send the assistants last response and the new prompt,
 			data["messages"] = append(messages, []map[string]interface{}{
@@ -250,22 +249,22 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 	// Check if the file exists
 	_, err := os.Stat(filepath)
 	if err != nil {
-		log.Error().Msgf("error statting %s from the local filesystem", err.Error())
+		job.Log().Error().Msgf("error statting %s from the local filesystem", err.Error())
 		return err
 	}
 
 	copyToFilename := "Resume.pdf"
 	outputFilePath := fmt.Sprintf("%s/%s", job.OutputDir, copyToFilename) //maybe can save with the principals name instead? probably output filename options should be part of the job (name explicitly, name based on candidate data field, invent a name, etc)
-	log.Info().Msgf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex)
+	job.Log().Info().Msgf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex)
 	SendJobUpdate(updates, fmt.Sprintf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex))
 
 	reader, err := os.Open(filepath)
 	if err != nil {
-		log.Error().Msgf("Error getting local FS file reader: %v", err)
+		job.Log().Error().Msgf("Error getting local FS file reader: %v", err)
 	}
 	writer, err := fs.Writer(outputFilePath)
 	if err != nil {
-		log.Error().Msgf("Error getting GCS file writer: %v", err)
+		job.Log().Error().Msgf("Error getting GCS file writer: %v", err)
 	}
 
 	//stream file from local fs to gcs
@@ -280,7 +279,7 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 		}
 	}
 
-	log.Info().Msgf("saveBestAttemptToGCS believed to be complete - bestAttemptIndex was %d", bestAttemptIndex)
+	job.Log().Info().Msgf("saveBestAttemptToGCS believed to be complete - bestAttemptIndex was %d", bestAttemptIndex)
 	SendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: %s/joboutput/%s/%s", bytesCount, config.ServiceUrl, job.Id.String(), copyToFilename))
 	return nil
 }

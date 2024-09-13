@@ -107,7 +107,7 @@ func WriteAttemptResumedataJSON(content string, job *job.Job, attemptNum int, fs
 	// Example: /home/user/output/validated_content.json
 	updatedContent, err := insertLayout(content, job.Layout, job.Style)
 	if err != nil {
-		log.Error().Msgf("Error inserting layout info: %v", err)
+		job.Log().Error().Msgf("Error inserting layout info: %v", err)
 		return err
 	}
 
@@ -117,29 +117,29 @@ func WriteAttemptResumedataJSON(content string, job *job.Job, attemptNum int, fs
 		outputFilePath := filepath.Join("../ResumeData/resumedata/", fmt.Sprintf("attempt%d.json", attemptNum))
 		err = WriteValidatedContent(updatedContent, outputFilePath)
 		if err != nil {
-			log.Error().Msgf("Error writing content to file: %v", err)
+			job.Log().Error().Msgf("Error writing content to file: %v", err)
 			return err
 		}
-		log.Info().Msgf("Content successfully written to:", outputFilePath)
+		job.Log().Info().Msgf("Content successfully written to: %s", outputFilePath)
 	} else if config.FsType == "gcs" {
 		outputFilePath := fmt.Sprintf("%s/attempt%d.json", job.OutputDir, attemptNum)
-		log.Info().Msgf("writeAttemptResumedataJSON to GCS bucket, path: %s", outputFilePath)
+		job.Log().Info().Msgf("writeAttemptResumedataJSON to GCS bucket, path: %s", outputFilePath)
 		err = fs.WriteFile(outputFilePath, []byte(updatedContent))
 		if err != nil {
-			log.Error().Msgf("Error writing content to file: %v", err)
+			job.Log().Error().Msgf("Error writing content to file: %v", err)
 			return err
 		}
-		log.Trace().Msg("writeAttemptResumedataJSON thinks it got past that.")
+		job.Log().Trace().Msg("writeAttemptResumedataJSON thinks it got past that.")
 	}
 
 	// Example: /home/user/output/validated_content.json
 	localOutfilePath := filepath.Join(job.OutputDir, fmt.Sprintf("attempt%d.json", attemptNum))
 	err = WriteValidatedContent(updatedContent, localOutfilePath)
 	if err != nil {
-		log.Error().Msgf("Error writing content to file: %v", err)
+		job.Log().Error().Msgf("Error writing content to file: %v", err)
 		return err
 	}
-	log.Info().Msgf("Content successfully written to:", localOutfilePath)
+	job.Log().Info().Msgf("Content successfully written to: %s", localOutfilePath)
 	return nil
 }
 
