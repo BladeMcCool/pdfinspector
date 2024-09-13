@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"github.com/rs/zerolog/log"
 	"os"
 	"path/filepath"
 	"pdfinspector/pkg/config"
@@ -14,7 +14,7 @@ import (
 // main function: Either runs the web server or executes the main functionality.
 func main() {
 	// Get the service configuration
-	config := config.GetServiceConfig()
+	config := config.GetServiceConfig(config.InitLogging())
 
 	if config.Mode == "cli" {
 		// CLI execution mode
@@ -45,11 +45,11 @@ func cliRunJob(config *config.ServiceConfig) {
 	t := tuner.NewTuner(config)
 	baselineJSON, err := t.GetBaselineJSON(baseline)
 	if err != nil {
-		log.Fatalf("error from reading baseline JSON: %v", err)
+		log.Fatal().Msgf("error from reading baseline JSON: %v", err)
 	}
 	layout, style, err := t.GetLayoutFromBaselineJSON(baselineJSON)
 	if err != nil {
-		log.Fatalf("error from extracting layout from baseline JSON: %v", err)
+		log.Fatal().Msgf("error from extracting layout from baseline JSON: %v", err)
 	}
 	if styleOverride != "" {
 		style = styleOverride
@@ -57,7 +57,7 @@ func cliRunJob(config *config.ServiceConfig) {
 
 	input, err := job.ReadInput(inputDir)
 	if err != nil {
-		log.Fatalf("Error reading input files: %v", err)
+		log.Fatal().Msgf("Error reading input files: %v", err)
 	}
 	if input.APIKey != "" {
 		config.OpenAiApiKey = input.APIKey
@@ -65,13 +65,13 @@ func cliRunJob(config *config.ServiceConfig) {
 
 	mainPrompt, err := getInputPrompt(inputDir)
 	if err != nil {
-		log.Println("error from reading input prompt: ", err)
+		log.Error().Msgf("error from reading input prompt: %s", err.Error())
 		return
 	}
 	if mainPrompt == "" {
 		mainPrompt, err = t.GetDefaultPrompt(layout)
 		if err != nil {
-			log.Println("error from reading input prompt: ", err)
+			log.Error().Msgf("error from reading input prompt: %s", err.Error())
 			return
 		}
 	}
@@ -88,7 +88,7 @@ func cliRunJob(config *config.ServiceConfig) {
 
 	err = t.TuneResumeContents(inputJob, nil)
 	if err != nil {
-		log.Fatalf("Error from resume tuning: %v", err)
+		log.Fatal().Msgf("Error from resume tuning: %v", err)
 	}
 }
 

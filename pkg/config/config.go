@@ -6,8 +6,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/api/option"
-	"log"
 	"os"
 	"strconv"
 )
@@ -27,10 +28,17 @@ type ServiceConfig struct {
 	ServiceListenPort string
 	AdminKey          string
 	UserCreditDeduct  int
+	LogLevel          int
+}
+
+func InitLogging() int {
+	logLevel := getConfigInt(nil, "LOG_LEVEL", 1) //1=Info (-1=Trace,0=Debug,2=Warn,3=Error,etc, see the top of zerolog/log.go)
+	zerolog.SetGlobalLevel(zerolog.Level(logLevel))
+	return logLevel
 }
 
 // GetServiceConfig function to return a pointer to serviceConfig
-func GetServiceConfig() *ServiceConfig {
+func GetServiceConfig(logLevel int) *ServiceConfig {
 	// Define CLI flags
 	gotenbergURL := flag.String("gotenberg-url", "", "URL for Gotenberg service")
 	jsonServerURL := flag.String("json-server-url", "", "URL for JSON server")
@@ -56,30 +64,31 @@ func GetServiceConfig() *ServiceConfig {
 		LocalPath:        getConfig(localPath, "LOCAL_PATH", "outputs"),
 		Mode:             getConfig(mode, "MODE", "server"), // Default to "server"
 		UseSystemGs:      getConfigBool(useSystemGs, "USE_SYSTEM_GS", false),
-		AdminKey:         getConfig(nil, "ADMIN_KEY", ""),            // Default to "server"
-		UserCreditDeduct: getConfigInt(nil, "USER_CREDIT_DEDUCT", 1), // Default to "server"
+		AdminKey:         getConfig(nil, "ADMIN_KEY", ""),
+		UserCreditDeduct: getConfigInt(nil, "USER_CREDIT_DEDUCT", 1),
+		LogLevel:         logLevel,
 	}
 
 	//Validation
 	if config.FsType == "gcs" && config.GcsBucket == "" {
-		log.Fatal("GCS bucket name must be specified for GCS filesystem")
+		log.Fatal().Msg("GCS bucket name must be specified for GCS filesystem")
 	}
 
 	if config.FsType == "local" && config.LocalPath == "" {
-		log.Fatal("Local path must be specified for local filesystem")
+		log.Fatal().Msg("Local path must be specified for local filesystem")
 	}
 	if config.Mode == "server" {
 		if config.OpenAiApiKey == "" {
-			log.Fatal("An Open AI (what a misnomer lol) API Key is required for the server to be able to do anything interesting.")
+			log.Fatal().Msg("An Open AI (what a misnomer lol) API Key is required for the server to be able to do anything interesting.")
 		}
 
 		url, err := getServiceURL("astute-backup-434623-h3", "us-central1", "pdfinspector")
 		if err != nil {
 			//not fatal. might not have credentials to access this.
-			log.Printf("failed to get service URL : %s", err.Error())
+			log.Error().Msgf("failed to get service URL : %s", err.Error())
 		}
 		config.ServiceUrl = url
-		log.Printf("determined service url to be: %s", url)
+		log.Info().Msgf("determined service url to be: %s", url)
 
 		config.ServiceListenPort = "8080"
 	}

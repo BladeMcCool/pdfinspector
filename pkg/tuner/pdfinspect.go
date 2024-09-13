@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/disintegration/imaging"
+	"github.com/rs/zerolog/log"
 	"image"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -81,7 +81,7 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 	// Step 5: Set the Content-Type header
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	log.Printf("Will ask gotenberg at %s to render page at %s", gotenbergRequestURL, urlToRender)
+	log.Info().Msgf("Will ask gotenberg at %s to render page at %s", gotenbergRequestURL, urlToRender)
 	// Step 6: Send the HTTP request
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -117,7 +117,7 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 		return fmt.Errorf("failed to write PDF to file: %v", err)
 	}
 
-	log.Printf("PDF saved to %s\n", outputFilePath)
+	log.Info().Msgf("PDF saved to %s", outputFilePath)
 
 	return nil
 }
@@ -163,24 +163,24 @@ func dumpPDFToPNG(attempt int, outputDir string, config *config.ServiceConfig) e
 			fmt.Sprintf("/workspace/attempt%d.pdf", attempt),
 		)
 	}
-	log.Printf("dump pdf to txt with gs command: %s", strings.Join(cmd.Args, " "))
-	log.Println("About to check the pdf text to confirm no errors")
+	log.Debug().Msgf("dump pdf to txt with gs command: %s", strings.Join(cmd.Args, " "))
+	log.Info().Msg("About to check the pdf text to confirm no errors")
 	// Run the command
 	err = cmd.Run()
-	log.Println("Here just after run")
+	log.Trace().Msg("Here just after run")
 	if err != nil {
 		return fmt.Errorf("Error running docker command: %v\n", err)
 	}
-	log.Println("Here before readfile")
+	log.Trace().Msg("Here before readfile")
 	data, err := os.ReadFile(filepath.Join(outputDirFullpath, "pdf-txtwrite.txt"))
 	if err != nil {
 		return fmt.Errorf("error reading pdf txt output %v", err)
 	}
-	log.Println("Here before checking for strings")
+	log.Trace().Msg("Here before checking for strings")
 	if strings.Contains(string(data), "Uncaught runtime errors") {
 		return fmt.Errorf("'Uncaught runtime errors' string detected in PDF contents.")
 	}
-	log.Println("Here before proceeding to image dumping")
+	log.Trace().Msg("Here before proceeding to image dumping")
 
 	if config.UseSystemGs {
 		cmd = exec.Command(
@@ -202,7 +202,7 @@ func dumpPDFToPNG(attempt int, outputDir string, config *config.ServiceConfig) e
 			fmt.Sprintf("/workspace/attempt%d.pdf", attempt),
 		)
 	}
-	log.Printf("dump pdf to png with gs command: %s", strings.Join(cmd.Args, " "))
+	log.Debug().Msgf("dump pdf to png with gs command: %s", strings.Join(cmd.Args, " "))
 
 	// Capture the output into a byte buffer
 	var outBuffer bytes.Buffer
@@ -234,7 +234,7 @@ func dumpPDFToPNG(attempt int, outputDir string, config *config.ServiceConfig) e
 		}
 		if processingLine != "" && len(pageLines) > 0 {
 			// Log the relevant information
-			log.Println("Rendered pages", strings.Join(pageLines, ", "), "as PNG files")
+			log.Info().Msgf("Rendered pages %s as PNG files", strings.Join(pageLines, ", "))
 		}
 	} else {
 		return fmt.Errorf("No page processing detected in command output.")
@@ -265,7 +265,7 @@ func inspectPNGFiles(outputDir string, attempt int) (inspectResult, error) {
 
 	// Sort the PNG files alphanumerically
 	sort.Strings(pngFiles)
-	log.Printf("will be treating the last of these files in this list as the last page to look at: %v\n", pngFiles)
+	log.Debug().Msgf("will be treating the last of these files in this list as the last page to look at: %v", pngFiles)
 
 	// If no PNG files were found, return the result with zero values
 	if len(pngFiles) == 0 {
@@ -294,7 +294,7 @@ func contentRatio(img image.Image) float64 {
 	//totalPixels := bounds.Dx() * bounds.Dy()
 
 	lastColoredPixelRow := 0
-	log.Printf("believe image dimensions are: %d x %d\n", bounds.Max.X, bounds.Max.Y)
+	log.Debug().Msgf("believe image dimensions are: %d x %d", bounds.Max.X, bounds.Max.Y)
 
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		//fmt.Printf("checking row %d\n", y)
@@ -309,9 +309,9 @@ func contentRatio(img image.Image) float64 {
 			}
 		}
 	}
-	log.Printf("lastrow found a pixel on: %v, total rows was %v\n", lastColoredPixelRow, bounds.Max.Y)
+	log.Debug().Msgf("lastrow found a pixel on: %v, total rows was %v", lastColoredPixelRow, bounds.Max.Y)
 	lastContentAt := float64(lastColoredPixelRow) / float64(bounds.Max.Y)
-	log.Printf("last content found at %.5f of the document.", lastContentAt)
+	log.Debug().Msgf("last content found at %.5f of the document.", lastContentAt)
 	return lastContentAt
 }
 
