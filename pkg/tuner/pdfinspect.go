@@ -65,16 +65,6 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 		return fmt.Errorf("failed to write to form field: %v", err)
 	}
 
-	//// test waitDelay (it seemed to work but the js thing above is way more explicit)
-	//waitDelayField, err := writer.CreateFormField("waitDelay")
-	//if err != nil {
-	//	return fmt.Errorf("failed to create form field: %v", err)
-	//}
-	//_, err = io.WriteString(waitDelayField, "3s")
-	//if err != nil {
-	//	return fmt.Errorf("failed to write to form field: %v", err)
-	//}
-
 	// Close the multipart writer to finalize the form data
 	err = writer.Close()
 	if err != nil {
@@ -329,9 +319,5 @@ func isColored(r, g, b, a uint32) bool {
 	const color_threshold = 0.9 * 0xffff //idk, using a threshold was a robots idea, seemed reasonable -- but also probably not neccesary. using 1.0 (eg not using it) gives a similar result.
 	const alpha_threshold = 0.1 * 0xffff //idk, using a threshold was a robots idea, seemed reasonable -- but also probably not neccesary. using 1.0 (eg not using it) gives a similar result.
 	//also .... transparent with no color == white when on screen as a pdf so ....
-	//return a > 0 && float64(r) >= threshold && float64(g) >= threshold && float64(b) >= threshold
-	//if r == 0 && g == 0 && b == 0 && a == 0 {
-	//	return false
-	//}
 	return float64(a) > alpha_threshold && float64(r) <= color_threshold && float64(g) <= color_threshold && float64(b) <= color_threshold
 }

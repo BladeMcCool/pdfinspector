@@ -8,22 +8,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	//"pdfinspector/tuner"
-	//"pdfinspector/tuner"
-	//"pdfinspector/tuner"
 )
-
-//type JobResult struct {
-//	ID     int
-//	Status string
-//	Result string
-//}
 
 // todo maybe this could include a flag about if it was an error so that we can detect that at the server and refund them?
 type JobStatus struct {
-	Message string `json:"message"`
-}
-type Hamburgers struct {
 	Message string `json:"message"`
 }
 
@@ -51,8 +39,7 @@ type Job struct {
 	AcceptableRatio float64
 	MaxAttempts     int
 	IsForAdmin      bool
-	//acceptableRatio = 0.88
-	//maxAttempts     = 1
+
 	//anything else we want as options per-job? i was thinking include_bio might be a good option. (todo: ability to not show it on functional, ability to show it on chrono, and then json schema tuning depending on if it is set or not so that the gpt can know to specify it - and dont include it when it shouldn't!)
 	//idk but i want to report to the user their balance and i dont really want to make a whole new struct for it
 	UserCreditRemaining int
@@ -60,25 +47,8 @@ type Job struct {
 
 var defaultAcceptableRatio = 0.88
 
-var defaultMaxAttempts = 7
-
-//var defaultMaxAttempts = 1
-
-//	func newJob(acceptableRatio float64, maxAttempts int) *Job {
-//		job := &Job{}
-//		if acceptableRatio != 0 {
-//			job.AcceptableRatio = acceptableRatio
-//		} else {
-//			job.AcceptableRatio = defaultAcceptableRatio
-//		}
-//
-//		if maxAttempts != 0 {
-//			job.MaxAttempts = defaultMaxAttempts
-//		} else {
-//			job.MaxAttempts = defaultMaxAttempts
-//		}
-//		return job
-//	}
+var defaultMaxAttempts = 7 //this should probably come from env
+//var defaultMaxAttempts = 1 //this should probably come from env
 
 func NewDefaultJob() *Job {
 	job := &Job{}
@@ -178,8 +148,6 @@ func ReadInput(dir string) (*Input, error) {
 	return &Input{
 		InputDir: dir,
 		JD:       string(jdContent),
-		//ExpectResponse: string(expectResponseContent),
-		//ExpectResponseSchema: expectResponseSchema,
-		APIKey: apiKey,
+		APIKey:   apiKey,
 	}, nil
 }

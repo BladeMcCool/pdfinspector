@@ -70,6 +70,8 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 				"content": fmt.Sprintf("You are a helpful resume tuning assistant. The response should include resume content such that the final resume fills one page to between %d%% and 95%%, leaving only a small margin at the bottom.", int(job.AcceptableRatio*100)),
 			},
 			// this was the way to do it without using the structured output facilities. tbh i'm still not sure what was producing better results but continuing on with the "right" way (structured output) at present.
+			//todo move this to readme
+			// mostly keeping this commented bit for posterity
 			//{
 			//	"role":    "user",
 			//	"content": "Show me an example input for the resume system to ingest",

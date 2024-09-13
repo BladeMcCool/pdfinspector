@@ -71,14 +71,6 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 	job.Layout = layout
 	job.Style = style
 
-	//job.ExpectResponseSchema, err = t.GetExpectedResponseJsonSchema(layout)
-	////todo refactor this stuff lol
-	//inputTemp := &jobPackage.Input{
-	//	JD:                   job.JobDescription,
-	//	ExpectResponseSchema: expectResponseSchema,
-	//	APIKey:               j.config.OpenAiApiKey,
-	//}
-
 	mainPrompt := job.CustomPrompt
 	if mainPrompt == "" {
 		mainPrompt, err = t.GetDefaultPrompt(layout)
@@ -89,13 +81,6 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 		log.Printf("used standard main prompt: %s", mainPrompt)
 	}
 	job.MainPrompt = mainPrompt
-
-	////todo: fix this calls arguments it should probably just be one struct.
-	////outputDir := fmt.Sprintf("outputs/%s", job.Id.String())
-	//outputDir := job.Id.String() // i want to be able to change this to nest under a subdirectory but its causing all kinds of problems right now.
-
-	//err = t.TuneResumeContents(inputTemp, mainPrompt, baselineJSON, layout, style, outputDir, t.Fs, j.config, job, updates)
-	//job.OutputDir = filepath.Join(t.config.LocalPath, job.Id.String())
 	job.OutputDir = fmt.Sprintf("%s/%s", t.config.LocalPath, job.Id.String())
 	return nil
 }
@@ -139,7 +124,6 @@ func (t *Tuner) GetLayoutFromBaselineJSON(baselineJSON string) (string, string, 
 }
 
 func (t *Tuner) takeNotesOnJD(job *job.Job) (string, error) {
-	//JDResponseFormat, err := os.ReadFile(filepath.Join("response_templates", "jdinfo.json"))
 	jDResponseSchemaRaw, err := os.ReadFile(filepath.Join("response_templates", "jdinfo-schema.json"))
 	if err != nil {
 		return "", fmt.Errorf("failed to read expect_response.json: %v", err)
@@ -149,9 +133,6 @@ func (t *Tuner) takeNotesOnJD(job *job.Job) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to decode JSON: %v", err)
 	}
-	//if err := validateJSON(string(jDResponseSchemaRaw)); err != nil {
-	//	return err
-	//}
 	prompt := strings.Join([]string{
 		"Extract information from the following Job Description. Take note of the name of the company, the job title, and most importantly the list of key words that a candidate will have in their CV in order to get through initial screening. Additionally, extract any location, remote-ok status, salary info and hiring process notes which can be succinctly captured.",
 		"\n--- start job description ---\n",
@@ -166,18 +147,7 @@ func (t *Tuner) takeNotesOnJD(job *job.Job) (string, error) {
 				"role":    "system",
 				"content": "You are a Job Description info extractor assistant.",
 			},
-			//{
-			//	"role":    "system",
-			//	"content": "You are a Job Description info extractor assistant. The response should include only the fields of the provided JSON example, in well-formed JSON, without any triple quoting, such that your responses can be ingested directly into an information system.",
-			//},
-			//{
-			//	"role":    "user",
-			//	"content": "Show me an example input for the Job Description information system to ingest",
-			//},
-			//{
-			//	"role":    "assistant",
-			//	"content": JDResponseFormat,
-			//},
+			//before switching to structured output we had to prompt it here with a message telling it to respond in json and then providing a fake response from the assistant in the expected json format. now we just send a json schema in a different part of the request :D
 			{
 				"role":    "user",
 				"content": prompt,
@@ -191,7 +161,6 @@ func (t *Tuner) takeNotesOnJD(job *job.Job) (string, error) {
 				"schema": jDResponseSchema,
 			},
 		},
-		//"max_tokens":  100,
 		"temperature": 0.7,
 	}
 	api_request_pretty, err := serializeToJSON(apirequest)
