@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	_ "image/png" // Importing PNG support
+	//_ "image/png" // Importing PNG support
 	"log"
 	"os"
 	"path/filepath"
 	"pdfinspector/pkg/config"
-	jobPackage "pdfinspector/pkg/job"
+	"pdfinspector/pkg/job"
 	"pdfinspector/pkg/server"
 	"pdfinspector/pkg/tuner"
 )
@@ -97,7 +97,7 @@ func cliRunJob(config *config.ServiceConfig) {
 		style = styleOverride
 	}
 
-	input, err := jobPackage.ReadInput(inputDir)
+	input, err := job.ReadInput(inputDir)
 	if err != nil {
 		log.Fatalf("Error reading input files: %v", err)
 	}
@@ -125,16 +125,16 @@ func cliRunJob(config *config.ServiceConfig) {
 	}
 
 	// this func could possibly leverage tuner.PopulateJob but doing that also might be annoying. tbd.
-	job := jobPackage.NewDefaultJob()
-	job.JobDescription = input.JD
-	job.Layout = layout
-	job.Style = style
-	job.MainPrompt = mainPrompt
-	job.BaselineJSON = baselineJSON
-	//job.OutputDir = filepath.Join(config.LocalPath, job.Id.String()) //should not use this for things that end up on gcs from a windows machine b/c it gets a backslash. idk probably should have local and gcs dirs saved separately so local can use local path sep and gcs always use forward slash.
-	job.OutputDir = fmt.Sprintf("%s/%s", config.LocalPath, job.Id.String())
+	inputJob := job.NewDefaultJob()
+	inputJob.JobDescription = input.JD
+	inputJob.Layout = layout
+	inputJob.Style = style
+	inputJob.MainPrompt = mainPrompt
+	inputJob.BaselineJSON = baselineJSON
+	//inputJob.OutputDir = filepath.Join(config.LocalPath, inputJob.Id.String()) //should not use this for things that end up on gcs from a windows machine b/c it gets a backslash. idk probably should have local and gcs dirs saved separately so local can use local path sep and gcs always use forward slash.
+	inputJob.OutputDir = fmt.Sprintf("%s/%s", config.LocalPath, inputJob.Id.String())
 
-	err = t.TuneResumeContents(job, nil)
+	err = t.TuneResumeContents(inputJob, nil)
 	if err != nil {
 		log.Fatalf("Error from resume tuning: %v", err)
 	}

@@ -1,6 +1,7 @@
 package jobrunner
 
 import (
+	"fmt"
 	"log"
 	"pdfinspector/pkg/config"
 	"pdfinspector/pkg/job"
@@ -20,6 +21,9 @@ func (j *JobRunner) RunJob(job *job.Job, updates chan job.JobStatus) {
 	//jobID := jobIDCounter
 	//jobIDCounter++
 	//mu.Unlock()
+	if !job.IsForAdmin {
+		tuner.SendJobUpdate(updates, fmt.Sprintf("credit remaining: %d", job.UserCreditRemaining))
+	}
 	log.Printf("do something with this job: %#v", job)
 
 	t := j.Tuner

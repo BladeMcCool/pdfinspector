@@ -25,6 +25,12 @@ FROM golang:1.23 as builder
 # Set the working directory inside the container
 WORKDIR /app
 
+# Copy only go.mod and go.sum first to leverage Docker cache
+COPY go.mod go.sum ./
+
+# Download dependencies (this layer will be cached unless go.mod or go.sum changes)
+RUN go mod download
+
 # Copy the entire project into the container
 COPY . .
 

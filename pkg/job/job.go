@@ -54,6 +54,8 @@ type Job struct {
 	//acceptableRatio = 0.88
 	//maxAttempts     = 1
 	//anything else we want as options per-job? i was thinking include_bio might be a good option. (todo: ability to not show it on functional, ability to show it on chrono, and then json schema tuning depending on if it is set or not so that the gpt can know to specify it - and dont include it when it shouldn't!)
+	//idk but i want to report to the user their balance and i dont really want to make a whole new struct for it
+	UserCreditRemaining int
 }
 
 var defaultAcceptableRatio = 0.88

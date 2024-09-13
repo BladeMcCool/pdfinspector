@@ -98,7 +98,8 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	inputJob.PrepareDefault()
-	if isAdmin, _ := r.Context().Value("isAdmin").(bool); isAdmin == true {
+
+	if isAdmin, _ := r.Context().Value("isAdmin").(bool); isAdmin {
 		inputJob.IsForAdmin = true
 	} else {
 		err := inputJob.ValidateForNonAdmin()
@@ -109,7 +110,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 		}
 		userKey, _ := r.Context().Value("userKey").(string)
 		//todo: if the inputJob fails return credit.
-		err = s.deductUserCredit(r.Context(), userKey)
+		err, inputJob.UserCreditRemaining = s.deductUserCredit(r.Context(), userKey)
 		if err != nil {
 			http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
 			return
@@ -126,12 +127,11 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 
 	//// Add inputJob to queue
 	//how about we call to a inputJob runner? which can be a server property and have a tuner already set in it.
-	statusChan := s.jobRunner.RunJobStreaming(&inputJob)
-
+	//statusChan :=
 	//go runJob(&inputJob, s.config, statusChan)
 
 	// Stream status updates to the client
-	for status := range statusChan {
+	for status := range s.jobRunner.RunJobStreaming(&inputJob) {
 		// Create a JobStatus struct with the status message
 
 		// Marshal the status update to JSON
@@ -341,7 +341,7 @@ func (s *pdfInspectorServer) LoadUserKeys() {
 	log.Printf("Loaded %d user keys", len(s.userKeys))
 }
 
-func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey string) error {
+func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey string) (error, int) {
 	//this is really just a best effort to create some kind of locking mechanism with gcs in the absesnce of anything stateful
 	//because i dont want to pay for a "real" solution (eg hosted database record locking or smth)
 
@@ -354,7 +354,7 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 	if !ok {
 		// Handle the error if the type assertion fails
 		log.Println("s.Fs is not of type *GCSFilesystem")
-		return errors.New("couldnt get gcs client")
+		return errors.New("couldnt get gcs client"), 0
 	}
 	//
 	client := gcsFs.Client
@@ -362,24 +362,24 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 
 	attrs, err := client.Bucket(s.config.GcsBucket).Object(creditFilePath).Attrs(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get generation number: %w", err)
+		return fmt.Errorf("failed to get generation number: %w", err), 0
 	}
 
 	//// Step 2: Read the current credit balance
 	rc, err := client.Bucket(s.config.GcsBucket).Object(creditFilePath).NewReader(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to read credit file: %w", err)
+		return fmt.Errorf("failed to read credit file: %w", err), 0
 	}
 	defer rc.Close()
 	fileData, err := io.ReadAll(rc)
 	if err != nil {
-		return fmt.Errorf("failed to read credit file: %w", err)
+		return fmt.Errorf("failed to read credit file: %w", err), 0
 	}
 
 	//// Parse the credit data (assuming it's stored as a single integer)
 	currentCredit, err := strconv.Atoi(strings.TrimSpace(string(fileData)))
 	if err != nil {
-		return fmt.Errorf("invalid credit format: %w", err)
+		return fmt.Errorf("invalid credit format: %w", err), 0
 	}
 	//
 	log.Printf("user %s has %d credit", userKey, currentCredit)
@@ -387,7 +387,7 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 	//// Step 3: Check if the user has enough credit
 	if currentCredit-deductionAmount < 0 {
 		// Deny the request if doing so would put us into negative balance
-		return fmt.Errorf("insufficient credit, request denied")
+		return fmt.Errorf("insufficient credit, request denied"), 0
 	}
 	//
 	//// Step 4: Deduct one credit
@@ -398,9 +398,9 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 	wc := client.Bucket(s.config.GcsBucket).Object(creditFilePath).If(storage.Conditions{GenerationMatch: attrs.Generation}).NewWriter(ctx)
 	defer wc.Close()
 	if _, err := wc.Write(newCreditData); err != nil {
-		return fmt.Errorf("failed to deduct credit, possible concurrent modification: %w", err)
+		return fmt.Errorf("failed to deduct credit, possible concurrent modification: %w", err), 0
 	}
 
 	// Credit deduction successful
-	return nil
+	return nil, newCredit
 }
