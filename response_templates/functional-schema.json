@@ -84,13 +84,13 @@
             "items": {
               "type": "object",
               "properties": {
-                "lead_in": {
+                "description": {
                   "type": "string",
-                  "description": "Bolded introductory text that begins a sentence or key point."
+                  "description": "Description of the accomplishment."
                 },
-                "continuation": {
-                  "type": "string",
-                  "description": "Continuation of the sentence that follows the lead_in, forming a complete thought when combined."
+                "lead_in": {
+                  "type": "integer",
+                  "description": "A count of the action words to highlight, from the start of the description"
                 },
                 "tech": {
                   "type": "array",
@@ -108,7 +108,7 @@
                   "description": "The company where the work was performed."
                 }
               },
-              "required": ["lead_in", "continuation", "tech", "daterange", "company"],
+              "required": ["lead_in", "description", "tech", "daterange", "company"],
               "additionalProperties": false
             }
           }

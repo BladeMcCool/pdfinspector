@@ -25,16 +25,12 @@
           "type": "string",
           "description": "The candidate's city and province/state."
         },
-        "profile": {
-          "type": ["string","null"],
-          "description": "A brief description or profile of the candidate."
-        },
         "github": {
           "type": ["string","null"],
           "description": "The candidate's GitHub profile URL."
         }
       },
-      "required": ["name", "email", "phone", "linkedin", "location", "profile", "github"],
+      "required": ["name", "email", "phone", "linkedin", "location", "github"],
       "additionalProperties": false
     },
     "skills": {
@@ -84,15 +80,11 @@
               "properties": {
                 "desc": {
                   "type": "string",
-                  "description": "A description of the project and what was done."
+                  "description": "A description of the project and what was done including a mention of the technologies used."
                 },
                 "sortdate": {
                   "type": "string",
                   "description": "A date used for sorting the project entries."
-                },
-                "tech": {
-                  "type": "string",
-                  "description": "A comma-separated list of technologies used on this project."
                 },
                 "github": {
                   "type": ["string","null"],
@@ -107,7 +99,7 @@
                   "description": "The job title held while working on the project."
                 }
               },
-              "required": ["desc","sortdate","tech","github","location","jobtitle"],
+              "required": ["desc","sortdate","github","location","jobtitle"],
               "additionalProperties": false
             }
           }

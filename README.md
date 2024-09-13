@@ -35,6 +35,10 @@ loop up to five times to get to a better resume under 1 page
         docker run --rm -p 80:80 -d --network my_network gotenberg/gotenberg:8 gotenberg --api-port=80 --api-timeout=10s --libreoffice-disable-routes --log-level=debug
         curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url=http://host.docker.internal:3000 -o ../pdfinspector/test2.pdf
         curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url="http://host.docker.internal:3000?layout=functional" -o ../pdfinspector/functional-test.pdf
+        curl -v --request POST http://localhost:80/forms/chromium/convert/url --form url="http://host.docker.internal:3000?layout=functional&resumedata=articulate" -o ./"Chris Hagglund Resume.pdf"
+        
+        curl -v --request POST https://gotenberg-1025621488749.us-central1.run.app/forms/chromium/convert/url --form url="https://react-app-1025621488749.us-central1.run.app/?jsonserver=json-server-1025621488749.us-central1.run.app&resumedata=46564153-d10c-48d5-a6fa-8df216f798b0%2Fattempt0&layout=functional" -o ./"deployed_test.pdf"
+
     cause a ghostscript png render of the pdf
         (that env stuff maybe not needed if we use go program to execute it - but we'll have to fill the pwd too)
         MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd):/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out2-%03d.png -r144 /workspace/test2.pdf
@@ -114,3 +118,53 @@ So, we need a different approach :
 👉 Use specific, personalized messages when reaching out—keep them balanced, clear, and professional. Even if you don't secure a job, you’ll build a valuable connection. If there's no response, wait a day or two before following up, and avoid sending multiple messages.
 
 It sounds like a lot of effort, but if you shift the same energy spent applying to jobs to the above activities, you will see better results - more interviews, and more job offers.
+
+----------
+for current job check:
+jam in:
+* Java (education notes, render them)
+* Kubernetes under Tmq stuff 
+correct email addr to the gmail one.
+cross functional somewhere in kraken stuff
+
+baseline checks:
+double-check that Redis is mentioned in baseline chrono and functional!
+
+https://pdfinspector-1025621488749.us-central1.run.app
+
+GOTENBERG_URL=https://gotenberg-1025621488749.us-central1.run.app
+JSON_SERVER_URL=https://json-server-1025621488749.us-central1.run.app
+REACT_APP_URL=https://react-app-1025621488749.us-central1.run.app
+
+docker run -e GOTENBERG_URL=https://gotenberg-1025621488749.us-central1.run.app \
+-e JSON_SERVER_URL=https://json-server-1025621488749.us-central1.run.app \
+-e REACT_APP_URL=https://react-app-1025621488749.us-central1.run.app \
+my-go-app
+
+gcloud run deploy my-go-app \
+--image gcr.io/your-project-id/my-go-app-image \
+--platform managed \
+--region us-central1 \
+--allow-unauthenticated \
+--set-env-vars GOTENBERG_URL=https://gotenberg-1025621488749.us-central1.run.app,JSON_SERVER_URL=https://json-server-1025621488749.us-central1.run.app,REACT_APP_URL=https://react-app-1025621488749.us-central1.run.app
+
+curl --location 'http://localhost:8080/streamjob' --header 'Content-Type: application/json' --data '{
+"jd":"crane operator",
+"baseline":"functional",
+"prompt":"replace the resume data contents with a detailing of fake, but real-sounding functional contributions that relate to the Job Description, while working at fake related companies during the time period 1945 to 1977. education fake and related as well."
+}' --no-buffer -sS
+
+refactor todo/notes:
+no more log.Fatalf in anything the webserver calls!
+
+we have a few things goin on
+- web server with config
+- environment vars and config handling
+- cli mode
+- resume tuner
+- job runner
+- filesystem type
+- gs executor
+- pdf data aquisitor / acquirer
+- jsondata placer
+- pdf data retriever

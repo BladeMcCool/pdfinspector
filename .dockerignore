@@ -1,0 +1,10 @@
+input/*
+outputs/*
+.idea
+*.png
+*.jpg
+*.pdf
+*.mjs
+*.bat
+pdfinspector
+astute-backup-434623-h3-6537f96bc7ab.json
