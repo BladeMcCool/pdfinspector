@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
-	"log"
+	"github.com/rs/zerolog/log"
 	"os"
 	"path/filepath"
 )
@@ -13,6 +13,7 @@ import (
 // todo maybe this could include a flag about if it was an error so that we can detect that at the server and refund them?
 type JobStatus struct {
 	Message string `json:"message"`
+	Error   *bool  `json:"error,omitempty"`
 }
 
 type JobResult struct {
@@ -88,7 +89,7 @@ func (job *Job) ValidateForNonAdmin() error {
 
 	// Check if the layout value is either "functional" or "chrono"
 	if layoutValue == "functional" || layoutValue == "chrono" {
-		log.Printf("The layout is: %s\n", layoutValue)
+		log.Info().Msgf("The layout is: %s", layoutValue)
 	} else {
 		return errors.New("The layout is neither 'functional' nor 'chrono'")
 	}
@@ -139,9 +140,9 @@ func ReadInput(dir string) (*Input, error) {
 			return nil, fmt.Errorf("API key not found in environment variable or api_key.txt: %v", err)
 		}
 		apiKey = string(apiKeyContent)
-		log.Println("Got API Key from input text file")
+		log.Info().Msgf("Got API Key from input text file")
 	} else {
-		log.Println("Got API Key from env var")
+		log.Info().Msgf("Got API Key from env var")
 	}
 
 	// Return the populated Input struct

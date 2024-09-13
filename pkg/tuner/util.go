@@ -3,7 +3,7 @@ package tuner
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/rs/zerolog/log"
 	"os"
 	"path/filepath"
 	"pdfinspector/pkg/config"
@@ -88,15 +88,15 @@ func checkForPreexistingAPIOutput(directory, filenameFragment string, counter in
 		if err != nil {
 			return true, "", fmt.Errorf("failed to read existing API output: %v", err)
 		}
-		log.Printf("Read prior response for api request attempt number %d from file system.\n", counter)
+		log.Info().Msgf("Read prior response for api request attempt number %d from file system.", counter)
 		return true, string(data), nil
 	} else if os.IsNotExist(err) {
 		// File does not exist
-		log.Printf("No prior response found for api request attempt number %d in file system.\n", counter)
+		log.Info().Msgf("No prior response found for api request attempt number %d in file system.", counter)
 		return false, "", nil
 	} else {
 		// Some other error occurred
-		log.Println("Error while checking file system for prior api response info.")
+		log.Error().Msg("Error while checking file system for prior api response info.")
 		return false, "", fmt.Errorf("error checking file existence: %v", err)
 	}
 }
@@ -107,7 +107,7 @@ func WriteAttemptResumedataJSON(content string, job *job.Job, attemptNum int, fs
 	// Example: /home/user/output/validated_content.json
 	updatedContent, err := insertLayout(content, job.Layout, job.Style)
 	if err != nil {
-		log.Printf("Error inserting layout info: %v\n", err)
+		log.Error().Msgf("Error inserting layout info: %v", err)
 		return err
 	}
 
@@ -117,29 +117,29 @@ func WriteAttemptResumedataJSON(content string, job *job.Job, attemptNum int, fs
 		outputFilePath := filepath.Join("../ResumeData/resumedata/", fmt.Sprintf("attempt%d.json", attemptNum))
 		err = WriteValidatedContent(updatedContent, outputFilePath)
 		if err != nil {
-			log.Printf("Error writing content to file: %v\n", err)
+			log.Error().Msgf("Error writing content to file: %v", err)
 			return err
 		}
-		log.Println("Content successfully written to:", outputFilePath)
+		log.Info().Msgf("Content successfully written to:", outputFilePath)
 	} else if config.FsType == "gcs" {
 		outputFilePath := fmt.Sprintf("%s/attempt%d.json", job.OutputDir, attemptNum)
-		log.Printf("writeAttemptResumedataJSON to GCS bucket, path: %s", outputFilePath)
+		log.Info().Msgf("writeAttemptResumedataJSON to GCS bucket, path: %s", outputFilePath)
 		err = fs.WriteFile(outputFilePath, []byte(updatedContent))
 		if err != nil {
-			log.Printf("Error writing content to file: %v\n", err)
+			log.Error().Msgf("Error writing content to file: %v", err)
 			return err
 		}
-		log.Printf("writeAttemptResumedataJSON thinks it got past that.")
+		log.Trace().Msg("writeAttemptResumedataJSON thinks it got past that.")
 	}
 
 	// Example: /home/user/output/validated_content.json
 	localOutfilePath := filepath.Join(job.OutputDir, fmt.Sprintf("attempt%d.json", attemptNum))
 	err = WriteValidatedContent(updatedContent, localOutfilePath)
 	if err != nil {
-		log.Printf("Error writing content to file: %v\n", err)
+		log.Error().Msgf("Error writing content to file: %v", err)
 		return err
 	}
-	log.Println("Content successfully written to:", localOutfilePath)
+	log.Info().Msgf("Content successfully written to:", localOutfilePath)
 	return nil
 }
 

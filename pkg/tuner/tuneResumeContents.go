@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"pdfinspector/pkg/config"
@@ -14,19 +14,21 @@ import (
 	"strings"
 )
 
+var trueVal = true
+
 // func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, layout, style, outputDir string, fs filesystem.FileSystem, config *config.ServiceConfig, job *job.Job, updates chan job.JobStatus) error {
 func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) error {
-	log.Printf("starting TuneResumeContents for job id %s", job.Id.String())
+	log.Info().Msgf("starting TuneResumeContents for job id %s", job.Id.String())
 	SendJobUpdate(updates, "getting any JD meta")
 	jDmetaRawJSON, err := t.takeNotesOnJD(job)
 	if err != nil {
-		log.Println("error taking notes on JD: ", err)
+		log.Info().Msgf("error taking notes on JD: ", err)
 		return err
 	}
 	jDMetaDecoded := &jdMeta{}
 	err = json.Unmarshal([]byte(jDmetaRawJSON), jDMetaDecoded)
 	if err != nil {
-		log.Println("error extracting notes on JD: ", err)
+		log.Error().Msgf("error extracting notes on JD: %s", err)
 		return err
 	}
 	SendJobUpdate(updates, "got any JD meta")
@@ -126,7 +128,7 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 		var apiResponse APIResponse
 		err = json.Unmarshal([]byte(output), &apiResponse)
 		if err != nil {
-			log.Printf("Error deserializing API response: %v\n", err)
+			log.Error().Msgf("Error deserializing API response: %v", err)
 			return err
 		}
 
@@ -139,10 +141,10 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 
 		err = validateJSON(content)
 		if err != nil {
-			log.Printf("Error validating JSON content: %v\n", err)
+			log.Error().Msgf("Error validating JSON content: %v", err)
 			return err
 		}
-		log.Printf("Got %d bytes of JSON content (at least well formed enough to be decodable) out of that last response\n", len(content))
+		log.Info().Msgf("Got %d bytes of JSON content (at least well formed enough to be decodable) out of that last response", len(content))
 		SendJobUpdate(updates, fmt.Sprintf("got JSON for attempt %d, will request PDF", i))
 
 		err = WriteAttemptResumedataJSON(content, job, i, t.Fs, t.config)
@@ -157,18 +159,18 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 		//and the ghostscript dump to pngs ...
 		err = dumpPDFToPNG(i, job.OutputDir, t.config)
 		if err != nil {
-			return fmt.Errorf("Error during pdf to image dump: %v\n", err)
+			return fmt.Errorf("Error during pdf to image dump: %v", err)
 		}
 		SendJobUpdate(updates, fmt.Sprintf("got PNGs for attempt %d, will check it", i))
 
 		result, err := inspectPNGFiles(job.OutputDir, i)
 		if err != nil {
-			log.Printf("Error inspecting png files: %v\n", err)
+			log.Error().Msgf("Error inspecting png files: %v", err)
 			return err
 		}
 		attemptsLog = append(attemptsLog, result)
 
-		log.Printf("inspect result: %#v", result)
+		log.Info().Msgf("inspect result: %#v", result)
 		if result.NumberOfPages == 0 {
 			return fmt.Errorf("no pages, idk just stop")
 		}
@@ -178,18 +180,18 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 		var tryPrompt string
 		if result.NumberOfPages > 1 {
 			if result.NumberOfPages > 2 {
-				log.Println("too many pages , this could be interesting but stop for now")
+				log.Info().Msgf("too many pages , this could be interesting ... (untested!)")
 				tryNewPrompt = true
 				tryPrompt = fmt.Sprintf("That was way too long, reduce the amount of content to try to get it down to one full page by summarizing or removing some existing project descriptions, removing projects within companies or by shortening up the skills list. Remember to make the candidate still look great in relation to the Job Description supplied earlier!")
 			} else {
 				reduceByPct := int(((result.LastPageContentRatio / (1 + result.LastPageContentRatio)) * 100) / 2)
-				log.Printf("only one extra page .... reduce by %d%%", reduceByPct)
+				log.Info().Msgf("only one extra page .... reduce by %d%%", reduceByPct)
 				tryNewPrompt = true
 				//tryPrompt = fmt.Sprintf("Too long, reduce by %d%%, by making minimal edits to the prior output as possible. Sometimes going overboard on skills makes it too long. Remember to make the candidate still look great in relation to the Job Description supplied earlier!", reduceByPct)
 				tryPrompt = fmt.Sprintf("Too long, reduce the total content length by %d%%, while still keeping the information highly relevant to the Job Description.", reduceByPct)
 			}
 		} else if result.NumberOfPages == 1 && result.LastPageContentRatio < job.AcceptableRatio {
-			log.Println("make it longer ...")
+			log.Info().Msgf("make it longer ...")
 			tryNewPrompt = true
 			//tryPrompt = fmt.Sprintf("Not long enough when rendered, was only %d%% of the page. Fill it up to between %d%% and 95%%. You can bulk up the content of existing project descriptions, add new projects within companies or by beefing up the skills list. Remember to make the candidate look even greater in relation to the Job Description supplied earlier!", int(result.LastPageContentRatio*100), int(acceptable_ratio*100))
 			increaseByPct := int((95.0 - result.LastPageContentRatio*100) / 2) //wat? idk smthin like this anyway.
@@ -198,11 +200,11 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 
 			//try to make it longer!!! - include the assistants last message in the new prompt so it can see what it did
 		} else if result.NumberOfPages == 1 && result.LastPageContentRatio >= job.AcceptableRatio {
-			log.Printf("over %d%% and still on one page? nice. we should stop (determined complete after attempt index %d).\n", int(job.AcceptableRatio*100), i)
+			log.Info().Msgf("over %d%% and still on one page? nice. we should stop (determined complete after attempt index %d).", int(job.AcceptableRatio*100), i)
 			//we will stop now, and this will be the 'best' one found by getBestAttemptIndex later if we are saving one to gcs.
 			break
 		}
-		log.Printf("will try new prompt: %s", tryPrompt)
+		log.Info().Msgf("will try new prompt: %s", tryPrompt)
 		if tryNewPrompt {
 			//not sure what the best approach is, to only send the assistants last response and the new prompt,
 			data["messages"] = append(messages, []map[string]interface{}{
@@ -244,37 +246,26 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 	}
 
 	bestAttemptIndex := getBestAttemptIndex(results)
-	//outputDir := job.Id.String()
 	filepath := filepath.Join(job.OutputDir, fmt.Sprintf("attempt%d.pdf", bestAttemptIndex))
 	// Check if the file exists
 	_, err := os.Stat(filepath)
 	if err != nil {
-		log.Printf("error statting %s from the local filesystem", err.Error())
+		log.Error().Msgf("error statting %s from the local filesystem", err.Error())
 		return err
 	}
 
-	// File exists, read its contents
-	//data, err := os.ReadFile(filepath)
-	//if err != nil {
-	//	log.Printf("error getting %s from the local filesystem", err.Error())
-	//}
-	//
 	copyToFilename := "Resume.pdf"
 	outputFilePath := fmt.Sprintf("%s/%s", job.OutputDir, copyToFilename) //maybe can save with the principals name instead? probably output filename options should be part of the job (name explicitly, name based on candidate data field, invent a name, etc)
-	log.Printf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex)
+	log.Info().Msgf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex)
 	SendJobUpdate(updates, fmt.Sprintf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex))
-	//log.Printf("writing PDF data to GCS bucket path: %s", outputFilePath)
-	//err = fs.WriteFile(outputFilePath, data)
-	//if err != nil {
-	//	log.Printf("Error writing content to file: %v\n", err)
-	//}
+
 	reader, err := os.Open(filepath)
 	if err != nil {
-		log.Printf("Error getting local FS file reader: %v\n", err)
+		log.Error().Msgf("Error getting local FS file reader: %v", err)
 	}
 	writer, err := fs.Writer(outputFilePath)
 	if err != nil {
-		log.Printf("Error getting GCS file writer: %v\n", err)
+		log.Error().Msgf("Error getting GCS file writer: %v", err)
 	}
 
 	//stream file from local fs to gcs
@@ -288,62 +279,11 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 			return err
 		}
 	}
-	//
-	//// Helper function to close the writer if it implements io.Closer
-	//func closeWriter(w io.Writer) error {
-	//	return closer.Close()
-	//}
-	//	return nil
-	//}
-	//// Close the writer and finalize the file upload
-	//if err := writer.Close(); err != nil {
-	//	return fmt.Errorf("Writer.Close: %v", err)
-	//}
-	log.Printf("saveBestAttemptToGCS believed to be complete")
+
+	log.Info().Msgf("saveBestAttemptToGCS believed to be complete - bestAttemptIndex was %d", bestAttemptIndex)
 	SendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: %s/joboutput/%s/%s", bytesCount, config.ServiceUrl, job.Id.String(), copyToFilename))
 	return nil
 }
-
-//todo try out some kind of streaming version of the func above maybe using os.Open and passing the output of that to GCS as a reader in the io.Copy operation
-//probably enhance the interface to offer a GetWriter(filename) method which would return the writer from obj.
-//func streamFileIntoGCS(bucketName, objectName, filePath string) error {
-//	// Create a context
-//	ctx := context.Background()
-//
-//	// Initialize a client using Application Default Credentials (ADC)
-//	client, err := storage.NewClient(ctx, option.WithCredentialsFile("path/to/your/credentials.json"))
-//	if err != nil {
-//		return fmt.Errorf("storage.NewClient: %v", err)
-//	}
-//	defer client.Close()
-//
-//	// Open the local file
-//	file, err := os.Open(filePath)
-//	if err != nil {
-//		return fmt.Errorf("os.Open: %v", err)
-//	}
-//	defer file.Close()
-//
-//	// Get the bucket object where the file will be uploaded
-//	bucket := client.Bucket(bucketName)
-//
-//	// Create a writer for the GCS object (file)
-//	obj := bucket.Object(objectName)
-//	writer := obj.NewWriter(ctx)
-//
-//	// Stream the file data to GCS
-//	if _, err := io.Copy(writer, file); err != nil {
-//		return fmt.Errorf("io.Copy: %v", err)
-//	}
-//
-//	// Close the writer and finalize the file upload
-//	if err := writer.Close(); err != nil {
-//		return fmt.Errorf("Writer.Close: %v", err)
-//	}
-//
-//	log.Printf("File %s uploaded to bucket %s as %s\n", filePath, bucketName, objectName)
-//	return nil
-//}
 
 func SendJobUpdate(updates chan job.JobStatus, message string) {
 	if updates == nil {
@@ -351,9 +291,14 @@ func SendJobUpdate(updates chan job.JobStatus, message string) {
 	}
 	updates <- job.JobStatus{Message: message}
 }
+func SendJobErrorUpdate(updates chan job.JobStatus, message string) {
+	if updates == nil {
+		return
+	}
+	updates <- job.JobStatus{Message: message, Error: &trueVal}
+}
 
 func getBestAttemptIndex(results []inspectResult) int {
-	//panic("well, laugh.")
 	bestResult := 0
 	for i, v := range results {
 		if v.NumberOfPages > results[bestResult].NumberOfPages {

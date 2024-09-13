@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/rs/zerolog/log"
 	"io"
-	"log"
 	"mime"
 	"net/http"
 	"os"
@@ -49,7 +49,8 @@ func (s *pdfInspectorServer) initRoutes() {
 	router := chi.NewRouter()
 
 	// Add middleware
-	router.Use(middleware.Logger)                    // Log requests
+	//router.Use(middleware.Logger)                    // Log requests
+	router.Use(structuredLogger)                     // Log requests ... better
 	router.Use(middleware.Recoverer)                 // Recover from panics
 	router.Use(middleware.Timeout(15 * time.Minute)) // Set a request timeout
 
@@ -70,10 +71,25 @@ func (s *pdfInspectorServer) initRoutes() {
 // RunServer starts the HTTP server and listens for requests
 func (s *pdfInspectorServer) RunServer() error {
 	addr := fmt.Sprintf(":%s", s.config.ServiceListenPort)
-	log.Printf("Starting server on port %s...\n", s.config.ServiceListenPort)
+	log.Info().Msgf("Starting server on port %s...", s.config.ServiceListenPort)
 
 	// Start the HTTP server with the chi router
 	return http.ListenAndServe(addr, s.router)
+}
+
+func structuredLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		// Call the next handler
+		next.ServeHTTP(w, r)
+		// After the response
+		log.Info().
+			Str("method", r.Method).
+			Str("url", r.URL.String()).
+			Str("remote_addr", r.RemoteAddr).
+			Dur("duration", time.Since(start)).
+			Msg("HTTP request completed")
+	})
 }
 
 // Handler for the root path
@@ -89,7 +105,7 @@ func (s *pdfInspectorServer) healthHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("here in streamJobHandler")
+	log.Trace().Msg("here in streamJobHandler")
 
 	var inputJob job.Job
 	if err := json.NewDecoder(r.Body).Decode(&inputJob); err != nil {
@@ -104,7 +120,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 	} else {
 		err := inputJob.ValidateForNonAdmin()
 		if err != nil {
-			log.Printf("invalid inputJob %v", err)
+			log.Error().Msgf("invalid inputJob %v", err)
 			http.Error(w, "Bad Reqeust: invalid inputJob", http.StatusBadRequest)
 			return
 		}
@@ -124,6 +140,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 
 	// Create a channel to communicate inputJob status updates
 	// Stream status updates to the client
+	var encounteredError = false
 	for status := range s.jobRunner.RunJobStreaming(&inputJob) {
 		// Create a JobStatus struct with the status message
 
@@ -135,9 +152,12 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 		}
 
 		// Write the JSON status update to the response
+		if status.Error != nil {
+			encounteredError = true
+		}
 		_, err = fmt.Fprintf(w, "%s\n", data)
 		if err != nil {
-			log.Println("Client connection lost.")
+			log.Debug().Msg("Client connection lost.")
 			return
 		}
 
@@ -147,10 +167,19 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	// Final result after inputJob completion
-	finalResult := job.JobResult{
-		Status:  "Completed",
-		Details: "The inputJob was successfully completed.",
+	var finalResult interface{}
+	if encounteredError {
+		// Final result after inputJob non completion
+		finalResult = job.JobResult{
+			Status:  "Failed",
+			Details: "The inputJob failed with an error.",
+		}
+	} else {
+		// Final result after inputJob completion
+		finalResult = job.JobResult{
+			Status:  "Completed",
+			Details: "The inputJob was successfully completed.",
+		}
 	}
 
 	// Marshal the final result to JSON
@@ -184,18 +213,18 @@ func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Req
 	resultPath := strings.Join(append([]string{"outputs"}, pathParts[2:]...), "/")
 
 	// Use the rejoined path as needed
-	log.Printf("Result Path: %s\n", resultPath)
+	log.Info().Msgf("Result Path: %s", resultPath)
 
 	data, err := s.jobRunner.Tuner.Fs.ReadFile(resultPath)
 	if err != nil {
 		http.Error(w, "Could not read file from GCS", http.StatusBadRequest)
 		return
 	}
-	log.Printf("Read %d bytes of data from GCS", len(data))
+	log.Info().Msgf("Read %d bytes of data from GCS", len(data))
 
 	// Infer the Content-Type based on the file extension
 	fileName := pathParts[len(pathParts)-1]
-	log.Printf("Send back with filename: %s\n", fileName)
+	log.Info().Msgf("Send back with filename: %s", fileName)
 	ext := filepath.Ext(fileName)
 	mimeType := mime.TypeByExtension(ext)
 
@@ -282,13 +311,13 @@ func (s *pdfInspectorServer) LoadUserKeys() {
 	// Use filepath.Glob to find all matching files
 	files, err := filepath.Glob(filepath.Join(dir, pattern))
 	if err != nil {
-		log.Printf("Error finding files in %s: %v", dir, err)
+		log.Info().Msgf("Error finding files in %s: %v", dir, err)
 		return
 	}
 
 	// If no files match the pattern, log it and return
 	if len(files) == 0 {
-		log.Printf("No files matching pattern %s found in directory %s", pattern, dir)
+		log.Info().Msgf("No files matching pattern %s found in directory %s", pattern, dir)
 		return
 	}
 
@@ -299,7 +328,7 @@ func (s *pdfInspectorServer) LoadUserKeys() {
 		// Open the file for reading
 		f, err := os.Open(file)
 		if err != nil {
-			log.Printf("Error opening file %s: %v", file, err)
+			log.Error().Msgf("Error opening file %s: %v", file, err)
 			continue
 		}
 		defer f.Close()
@@ -316,11 +345,11 @@ func (s *pdfInspectorServer) LoadUserKeys() {
 
 		// Log any scanning errors (such as malformed input)
 		if err := scanner.Err(); err != nil {
-			log.Printf("Error reading file %s: %v", file, err)
+			log.Error().Msgf("Error reading file %s: %v", file, err)
 		}
 	}
 
-	log.Printf("Loaded %d user keys", len(s.userKeys))
+	log.Info().Msgf("Loaded %d user keys", len(s.userKeys))
 }
 
 func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey string) (error, int) {
@@ -335,7 +364,7 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 	_ = gcsFs
 	if !ok {
 		// Handle the error if the type assertion fails
-		log.Println("s.Fs is not of type *GCSFilesystem")
+		log.Error().Msg("s.Fs is not of type *GCSFilesystem")
 		return errors.New("couldnt get gcs client"), 0
 	}
 	//
@@ -364,7 +393,7 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 		return fmt.Errorf("invalid credit format: %w", err), 0
 	}
 	//
-	log.Printf("user %s has %d credit", userKey, currentCredit)
+	log.Info().Msgf("user %s has %d credit", userKey, currentCredit)
 	deductionAmount := s.config.UserCreditDeduct
 	// Step 3: Check if the user has enough credit
 	if currentCredit-deductionAmount < 0 {

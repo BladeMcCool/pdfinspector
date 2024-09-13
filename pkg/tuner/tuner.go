@@ -8,7 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+
+	"github.com/rs/zerolog/log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -75,10 +76,10 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 	if mainPrompt == "" {
 		mainPrompt, err = t.GetDefaultPrompt(layout)
 		if err != nil {
-			log.Println("error from reading input prompt: ", err)
+			log.Error().Msgf("error from reading input prompt: ", err)
 			return err
 		}
-		log.Printf("used standard main prompt: %s", mainPrompt)
+		log.Info().Msgf("used standard main prompt: %s", mainPrompt)
 	}
 	job.MainPrompt = mainPrompt
 	job.OutputDir = fmt.Sprintf("%s/%s", t.config.LocalPath, job.Id.String())
@@ -98,14 +99,14 @@ func (t *Tuner) GetBaselineJSON(baseline string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("Failed to read the response body: %v", err)
 	}
-	log.Printf("got %d bytes of json from the json-server via %s\n", len(body), jsonRequestURL)
+	log.Info().Msgf("got %d bytes of json from the json-server via %s", len(body), jsonRequestURL)
 	return string(body), nil
 }
 
 func (t *Tuner) GetLayoutFromBaselineJSON(baselineJSON string) (string, string, error) {
 	//if i want anything else beyond layout and style i should return a struct because this is ugly.
 
-	//log.Println("dbg baselinejson", baselineJSON)
+	log.Trace().Msgf("dbg baselinejson %s", baselineJSON)
 	var decoded map[string]interface{}
 	err := json.Unmarshal([]byte(baselineJSON), &decoded)
 	if err != nil {
@@ -198,14 +199,14 @@ func (t *Tuner) takeNotesOnJD(job *job.Job) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("Error validating JSON content: %v\n", err)
 	}
-	log.Printf("Got %d bytes of JSON content about the JD (at least well formed enough to be decodable) out of that last response\n", len(content))
+	log.Info().Msgf("Got %d bytes of JSON content about the JD (at least well formed enough to be decodable) out of that last response", len(content))
 
 	outputFilePath := filepath.Join(job.OutputDir, "jdinfo-out.json")
 	err = WriteValidatedContent(content, outputFilePath)
 	if err != nil {
 		return "", fmt.Errorf("Error writing content to file: %v\n", err)
 	}
-	log.Println("JD Info Content successfully written to:", outputFilePath)
+	log.Info().Msgf("JD Info Content successfully written to: %s", outputFilePath)
 	return content, nil
 }
 
@@ -215,14 +216,14 @@ func (t *Tuner) configureFilesystem() filesystem.FileSystem {
 		t.Fs = &filesystem.LocalFileSystem{BasePath: t.config.LocalPath}
 	} else if t.config.FsType == "gcs" {
 		// Create a new GCS client
-		log.Printf("setting up gcs client ...")
+		log.Info().Msg("setting up gcs client ...")
 		ctx := context.Background()
 		client, err := storage.NewClient(ctx)
 		if err != nil {
-			log.Fatalf("Failed to create GCS client: %v", err)
+			log.Fatal().Msgf("Failed to create GCS client: %v", err)
 		}
 		if t.config.GcsBucket == "" {
-			log.Fatal("gcs-bucket arg needs to have a value")
+			log.Fatal().Msg("gcs-bucket arg needs to have a value")
 		}
 		t.Fs = &filesystem.GCSFileSystem{Client: client, BucketName: t.config.GcsBucket}
 	}
@@ -244,7 +245,7 @@ func (t *Tuner) GetExpectedResponseJsonSchema(layout string) (interface{}, error
 	return expectResponseSchema, nil
 }
 func (t *Tuner) GetDefaultPrompt(layout string) (string, error) {
-	log.Printf("No (or empty) prompt from the file system so will use a default one.")
+	log.Info().Msgf("No (or empty) prompt from the file system so will use a default one.")
 
 	//prompt := "Provide feedback on the following JSON. Is it well formed? What do you think the purpose is? Tell me about things marked as hide and what that might mean. Finally, how long in terms of page count do you think the final document this feeds into is?\n\nJSON: "
 
@@ -318,7 +319,7 @@ func (t *Tuner) GetDefaultPrompt(layout string) (string, error) {
 
 func (t *Tuner) makeAPIRequest(apiBody interface{}, counter int, name, outputDir string) (string, error) {
 	//panic("slow down there son, you really want to hit the paid api at this time?")
-	log.Printf("Make request to OpenAI ...")
+	log.Info().Msgf("Make request to OpenAI ...")
 	// Serialize the interface to pretty-printed JSON
 	jsonData, err := json.Marshal(apiBody)
 	if err != nil {
@@ -357,7 +358,7 @@ func (t *Tuner) makeAPIRequest(apiBody interface{}, counter int, name, outputDir
 	if err != nil {
 		return "", fmt.Errorf("failed to write response to file: %v", err)
 	}
-	log.Printf("Got response from OpenAI API ... (and should have wrote it to the file system)")
+	log.Info().Msgf("Got response from OpenAI API ... (and should have wrote it to the file system)")
 
 	// Return the response string
 	return responseString, nil
