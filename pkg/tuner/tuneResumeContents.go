@@ -11,6 +11,7 @@ import (
 	"pdfinspector/pkg/filesystem"
 	"pdfinspector/pkg/job"
 	"strings"
+	"time"
 )
 
 var trueVal = true
@@ -21,13 +22,13 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 	SendJobUpdate(updates, "getting any JD meta")
 	jDmetaRawJSON, err := t.takeNotesOnJD(job)
 	if err != nil {
-		job.Log().Info().Msgf("error taking notes on JD: ", err)
+		job.Log().Info().Msgf("error taking notes on JD: %s", err.Error())
 		return err
 	}
 	jDMetaDecoded := &jdMeta{}
 	err = json.Unmarshal([]byte(jDmetaRawJSON), jDMetaDecoded)
 	if err != nil {
-		job.Log().Error().Msgf("error extracting notes on JD: %s", err)
+		job.Log().Error().Msgf("error extracting notes on JD: %s", err.Error())
 		return err
 	}
 	SendJobUpdate(updates, "got any JD meta")
@@ -149,9 +150,21 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 		err = WriteAttemptResumedataJSON(content, job, i, t.Fs, t.config)
 
 		//we should be able to render that updated content proposal now via gotenberg + ghostscript
-		err = makePDFRequestAndSave(i, t.config, job)
-		if err != nil {
-			return err
+		maxGotenAttempts := 3
+		for k := 0; k < maxGotenAttempts; k++ {
+			err = makePDFRequestAndSave(i, t.config, job)
+			if err == nil {
+				break
+			}
+			var httpErr *GotenbergHTTPError
+			if errors.As(err, &httpErr) {
+				// Handle the error based on the HTTP code
+				job.Log().Info().Msgf("Got a retryable error from Gotenberg, code %d", httpErr.HttpResponseCode)
+				time.Sleep(1 * time.Second)
+				continue
+			} else if err != nil {
+				return err
+			}
 		}
 		SendJobUpdate(updates, fmt.Sprintf("got PDF for attempt %d, will dump to PNG", i))
 
@@ -280,7 +293,7 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 	}
 
 	job.Log().Info().Msgf("saveBestAttemptToGCS believed to be complete - bestAttemptIndex was %d", bestAttemptIndex)
-	SendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: %s/joboutput/%s/%s", bytesCount, config.ServiceUrl, job.Id.String(), copyToFilename))
+	SendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: %s/joboutput/%s/%s", bytesCount, config.ServiceUrl, job.Id, copyToFilename))
 	return nil
 }
 

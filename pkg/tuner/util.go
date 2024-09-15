@@ -42,6 +42,7 @@ func DecodeJSON(data string) (interface{}, error) {
 // writeToFile writes data to a file in the output directory with a filename based on the counter and fragment
 func writeToFile(data string, counter int, filenameFragment, outputDir string) error {
 	// Create the output directory if it doesn't exist
+	log.Trace().Msgf("try to mkdirall for: %s", outputDir)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %v", err)
 	}

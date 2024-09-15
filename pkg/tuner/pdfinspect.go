@@ -2,9 +2,13 @@ package tuner
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/disintegration/imaging"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/oauth2"
+	"google.golang.org/api/idtoken"
 	"image"
 	"io"
 	"mime/multipart"
@@ -25,15 +29,25 @@ type inspectResult struct {
 	LastPageContentRatio float64
 }
 
+type GotenbergHTTPError struct {
+	HttpResponseCode int
+	HttpError        bool
+	Message          string
+}
+
+func (e *GotenbergHTTPError) Error() string {
+	return e.Message
+}
+
 func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.Job) error {
 	// Step 1: Create a new buffer and a multipart writer
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
-
+	ctx := context.Background()
 	// Step 2: Add the "url" field to the multipart form
 	urlField, err := writer.CreateFormField("url")
 	if err != nil {
-		return fmt.Errorf("failed to create form field: %v", err)
+		return fmt.Errorf("failed to create url form field: %v", err)
 	}
 
 	var urlToRender string
@@ -43,8 +57,21 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 		if err != nil {
 			return err
 		}
-		jsonPathFragment := url.PathEscape(fmt.Sprintf("%s/attempt%d", job.Id.String(), attempt))
-		fmt.Sprintf("%s/attempt%d", job.Id.String(), attempt)
+
+		//todo: figure another way to lock down the json server because due to the fact that OPTIONS preflight request in the browser for doing a cross site fetch method _will not ever_ use a bearer auth token, it is impossible therefor to do the successful preflight from headless chrome in deployed gotenberg to the json server.
+		//  so we have to deploy the json server with --allow-unauthenticated
+		//  current plan is to leverage the fact that the js based fetch request is just going to send the react server token along. we'll prepare the json server to accept that.
+
+		//jsonIDToken, err := getIDToken(ctx, config.JsonServerURL)
+		//if err != nil {
+		//	return fmt.Errorf("failed to obtain token for json server: %v", err)
+		//}
+		//escapedToken := url.QueryEscape(jsonIDToken)
+		//_ = escapedToken
+		//log.Trace().Msgf("token to access json server: %s", jsonIDToken)
+		//
+		jsonPathFragment := url.PathEscape(fmt.Sprintf("%s/attempt%d", job.Id, attempt))
+		//urlToRender = fmt.Sprintf("%s/?jsonserver=%s&resumedata=%s&layout=%s&token=%s", config.ReactAppURL, jsonServerHostname, jsonPathFragment, job.Layout, escapedToken)
 		urlToRender = fmt.Sprintf("%s/?jsonserver=%s&resumedata=%s&layout=%s", config.ReactAppURL, jsonServerHostname, jsonPathFragment, job.Layout)
 	} else {
 		//legacy way, presumably json server is on local host or smth.
@@ -65,6 +92,15 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 		return fmt.Errorf("failed to write to form field: %v", err)
 	}
 
+	extraHttpHeaders, err := getExtraHttpHeadersForGotenbergRequest(ctx, config)
+	if err != nil {
+		return fmt.Errorf("failed to obtain tokens for react server: %v", err)
+	}
+	err = writer.WriteField("extraHttpHeaders", extraHttpHeaders)
+	if err != nil {
+		return fmt.Errorf("failed to create extraHttpHeaders form field: %v", err)
+	}
+
 	// Close the multipart writer to finalize the form data
 	err = writer.Close()
 	if err != nil {
@@ -83,15 +119,67 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 
 	log.Info().Msgf("Will ask gotenberg at %s to render page at %s", gotenbergRequestURL, urlToRender)
 	// Step 6: Send the HTTP request
-	client := &http.Client{}
+	client, err := createAuthenticatedClient(ctx, config.GotenbergURL)
+	if err != nil {
+		return fmt.Errorf("failed to create authenticated client: %v", err)
+	}
+	//client := &http.Client{}
+	//
+	//gotenSuccess := false
+	//gotenLastCode := 0
+	//var resp *http.Response
+	////var possiblyCloableBodies []io.ReadCloser
+	//for gotenbergAttempt := 0; gotenbergAttempt < 3; gotenbergAttempt++ {
+	//	resp, err = client.Do(req)
+	//	if err != nil {
+	//		log.Trace().Msgf("failed to send HTTP request: %v", err)
+	//		continue
+	//	}
+	//	//possiblyCloableBodies = append(possiblyCloableBodies, resp.Body)
+	//	//if resp.StatusCode != http.StatusOK {
+	//	//	return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	//	//}
+	//	gotenLastCode = resp.StatusCode
+	//	if gotenbergAttempt < 1 {
+	//		log.Trace().Msg("debug just pretending we failed the first gotenberg try")
+	//		resp.Body.Close()
+	//		continue
+	//	}
+	//	if gotenLastCode == http.StatusOK {
+	//		gotenSuccess = true
+	//		break
+	//	}
+	//	resp.Body.Close()
+	//	if gotenLastCode != http.StatusServiceUnavailable {
+	//		log.Trace().Msgf("unexpected response code from gotenberg: %d", gotenLastCode)
+	//		break
+	//	} else {
+	//		log.Info().Msg("Gotenberg request failed with a retryable error.")
+	//		time.Sleep(3 * time.Second)
+	//	}
+	//}
+	//defer resp.Body.Close()
+	//
+	//if !gotenSuccess {
+	//	// Step 7: Check the response status code
+	//	return fmt.Errorf("unexpected status code from gotenberg: %d", gotenLastCode)
+	//
+	//}
+
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send HTTP request: %v", err)
+		log.Trace().Msgf("failed to send HTTP request: %v", err)
+		return err
 	}
 	defer resp.Body.Close()
-
-	// Step 7: Check the response status code
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusServiceUnavailable {
+			return &GotenbergHTTPError{
+				HttpResponseCode: resp.StatusCode,
+				HttpError:        true,
+				Message:          "Gotenberg gave retryable http error code",
+			}
+		}
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
@@ -120,6 +208,52 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 	log.Info().Msgf("PDF saved to %s", outputFilePath)
 
 	return nil
+}
+
+func getExtraHttpHeadersForGotenbergRequest(ctx context.Context, config *config.ServiceConfig) (string, error) {
+	//due to GCP internals and not wanting these services wide open to the public internet we have to pass some tokens along
+	//we need to prepare them here because we can't make gotenberg figure this out, and the react app also has no way to figure it out on its own
+	//to be able to talk to the json server. so we'll prepare the tokens here and pass them along. fingers crossed that this works!
+
+	// Step 1: Obtain the ID token for the React service
+	reactIDToken, err := getIDToken(ctx, config.ReactAppURL)
+	if err != nil {
+		return "", fmt.Errorf("Error obtaining ID token for React service: %v", err)
+	}
+
+	// Step 2: Prepare the extra HTTP headers as a JSON string
+	extraHeaders := map[string]string{
+		"Authorization": "Bearer " + reactIDToken,
+		//"JsonIdToken":   jsonIDToken,
+	}
+	extraHeadersJSON, err := json.Marshal(extraHeaders)
+	if err != nil {
+		return "", fmt.Errorf("Error marshalling extra headers: %v", err)
+	}
+	return string(extraHeadersJSON), nil
+}
+
+func getIDToken(ctx context.Context, audience string) (string, error) {
+	tokenSource, err := idtoken.NewTokenSource(ctx, audience)
+	if err != nil {
+		return "", fmt.Errorf("idtoken.NewTokenSource: %v", err)
+	}
+
+	token, err := tokenSource.Token()
+	if err != nil {
+		return "", fmt.Errorf("tokenSource.Token: %v", err)
+	}
+
+	return token.AccessToken, nil
+}
+
+func createAuthenticatedClient(ctx context.Context, audience string) (*http.Client, error) {
+	tokenSource, err := idtoken.NewTokenSource(ctx, audience)
+	if err != nil {
+		return nil, fmt.Errorf("idtoken.NewTokenSource: %v", err)
+	}
+	client := oauth2.NewClient(ctx, tokenSource)
+	return client, nil
 }
 
 func extractHostname(rawURL string) (string, error) {
@@ -179,6 +313,10 @@ func dumpPDFToPNG(attempt int, outputDir string, config *config.ServiceConfig) e
 	log.Trace().Msg("Here before checking for strings")
 	if strings.Contains(string(data), "Uncaught runtime errors") {
 		return fmt.Errorf("'Uncaught runtime errors' string detected in PDF contents.")
+	}
+	log.Trace().Msg("Here before proceeding to image dumping")
+	if strings.Contains(string(data), "Error loading data: Failed to fetch") {
+		return fmt.Errorf("'Error loading data: Failed to fetch' string detected in PDF contents.")
 	}
 	log.Trace().Msg("Here before proceeding to image dumping")
 

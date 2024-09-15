@@ -83,8 +83,8 @@ func cliRunJob(config *config.ServiceConfig) {
 	inputJob.Style = style
 	inputJob.MainPrompt = mainPrompt
 	inputJob.BaselineJSON = baselineJSON
-	//inputJob.OutputDir = filepath.Join(config.LocalPath, inputJob.Id.String()) //should not use this for things that end up on gcs from a windows machine b/c it gets a backslash. idk probably should have local and gcs dirs saved separately so local can use local path sep and gcs always use forward slash.
-	inputJob.OutputDir = fmt.Sprintf("%s/%s", config.LocalPath, inputJob.Id.String())
+	//inputJob.OutputDir = filepath.Join(config.LocalPath, inputjob.Id) //should not use this for things that end up on gcs from a windows machine b/c it gets a backslash. idk probably should have local and gcs dirs saved separately so local can use local path sep and gcs always use forward slash.
+	inputJob.OutputDir = fmt.Sprintf("%s/%s", config.LocalPath, inputJob.Id)
 
 	err = t.TuneResumeContents(inputJob, nil)
 	if err != nil {

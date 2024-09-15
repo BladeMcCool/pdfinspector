@@ -52,6 +52,7 @@ func NewTuner(config *config.ServiceConfig) *Tuner {
 }
 
 func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
+	job.OutputDir = fmt.Sprintf("%s/%s", t.config.LocalPath, job.Id)
 
 	if job.BaselineJSON == "" && job.Baseline != "" && job.IsForAdmin {
 		baselineJSON, err := t.GetBaselineJSON(job.Baseline)
@@ -82,18 +83,33 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 		job.Log().Info().Msgf("used standard main prompt: %s", mainPrompt)
 	}
 	job.MainPrompt = mainPrompt
-	job.OutputDir = fmt.Sprintf("%s/%s", t.config.LocalPath, job.Id.String())
 	return nil
 }
 
 func (t *Tuner) GetBaselineJSON(baseline string) (string, error) {
 	// get JSON of the current complete resume including all the hidden stuff, this hits an express server that imports the reactresume resumedata.mjs and outputs it as json.
 	jsonRequestURL := fmt.Sprintf("%s?baseline=%s", t.config.JsonServerURL, baseline)
-	resp, err := http.Get(jsonRequestURL)
+
+	client, err := createAuthenticatedClient(context.Background(), t.config.JsonServerURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to create authenticated client: %v", err)
+	}
+	req, err := http.NewRequest("GET", jsonRequestURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to define HTTP request: %v", err)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("Failed to make the HTTP request: %v", err)
 	}
 	defer resp.Body.Close()
+
+	//resp, err := http.Get(jsonRequestURL)
+	//if err != nil {
+	//	return "", fmt.Errorf("Failed to make the HTTP request: %v", err)
+	//}
+	//defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

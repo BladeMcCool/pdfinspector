@@ -29,7 +29,8 @@ type Job struct {
 	BaselineJSON   string `json:"baseline_json"` //the actual layout to use is a property of the baseline resumedata.
 	CustomPrompt   string `json:"prompt"`
 	StyleOverride  string `json:"style_override"` //eg fluffy
-	Id             uuid.UUID
+	Id             string
+	OverrideJobId  *string `json:"job_id,omitempty"` //generally speaking this can't be set by a user, is just for admin/testing
 
 	//pulled up or determined from the baseline or baselinejson, could be overrode (perhaps) by job.
 	Layout     string
@@ -58,15 +59,24 @@ var defaultMaxAttempts = 7 //this should probably come from env
 
 func NewDefaultJob() *Job {
 	job := &Job{}
-	job.PrepareDefault()
+	job.PrepareDefault(nil)
 	return job
 }
-func (job *Job) PrepareDefault() {
-	job.Id = uuid.New()
+func (job *Job) PrepareDefault(jobId *string) {
+	if jobId == nil || *jobId == "" {
+		job.Id = uuid.New().String()
+	} else {
+		job.Id = *jobId
+	}
 	job.AcceptableRatio = defaultAcceptableRatio
 	job.MaxAttempts = defaultMaxAttempts
 	job.Logger = job.setLogger()
 }
+
+//	func (job *Job) OverrideJobId(jobId string) {
+//		job.Id = jobId
+//		job.Logger = job.setLogger()
+//	}
 func (job *Job) ValidateForNonAdmin() error {
 	//this is just more of a thought than perhaps a good idea. the failure modes can be many and we should just return api credits if job failed. todo.
 	if job.Baseline != "" {
@@ -161,7 +171,7 @@ func ReadInput(dir string) (*Input, error) {
 
 func (job *Job) setLogger() *zerolog.Logger {
 	logger := log.With().
-		Str("job_id", job.Id.String()).
+		Str("job_id", job.Id).
 		Logger()
 	return &logger
 }

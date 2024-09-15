@@ -27,6 +27,7 @@ func (j *JobRunner) RunJob(job *job.Job, updates chan job.JobStatus) {
 	if err != nil {
 		job.Log().Error().Msgf("Error from PopulateJob: %v", err)
 	}
+	job.Log().Trace().Msgf("debug here job output dir: %s", job.OutputDir)
 
 	err = t.TuneResumeContents(job, updates)
 	if err != nil {

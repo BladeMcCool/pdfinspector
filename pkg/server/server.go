@@ -113,11 +113,11 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	inputJob.PrepareDefault()
-
 	if isAdmin, _ := r.Context().Value("isAdmin").(bool); isAdmin {
+		inputJob.PrepareDefault(inputJob.OverrideJobId)
 		inputJob.IsForAdmin = true
 	} else {
+		inputJob.PrepareDefault(nil)
 		err := inputJob.ValidateForNonAdmin()
 		if err != nil {
 			log.Error().Msgf("invalid inputJob %v", err)

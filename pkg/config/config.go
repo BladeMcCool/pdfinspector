@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"google.golang.org/api/option"
 	"os"
 	"strconv"
 )
@@ -82,6 +81,7 @@ func GetServiceConfig(logLevel int) *ServiceConfig {
 			log.Fatal().Msg("An Open AI (what a misnomer lol) API Key is required for the server to be able to do anything interesting.")
 		}
 
+		//todo astute-backup-434623-h3 at least should probably be an env var. or ... idk a robot suggested GOOGLE_CLOUD_PROJECT in the env might have it
 		url, err := getServiceURL("astute-backup-434623-h3", "us-central1", "pdfinspector")
 		if err != nil {
 			//not fatal. might not have credentials to access this.
@@ -145,7 +145,8 @@ func getServiceURL(projectID, location, serviceName string) (string, error) {
 	ctx := context.Background()
 	_ = ctx
 
-	client, err := run.NewServicesClient(ctx, option.WithCredentialsFile(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")))
+	//client, err := run.NewServicesClient(ctx, option.WithCredentialsFile(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")))
+	client, err := run.NewServicesClient(ctx)
 	// Initialize the Cloud Run client with automatic authentication
 	if err != nil {
 		return "", fmt.Errorf("failed to create cloud run client: %v", err)
