@@ -90,7 +90,7 @@ func (t *Tuner) GetBaselineJSON(baseline string) (string, error) {
 	// get JSON of the current complete resume including all the hidden stuff, this hits an express server that imports the reactresume resumedata.mjs and outputs it as json.
 	jsonRequestURL := fmt.Sprintf("%s?baseline=%s", t.config.JsonServerURL, baseline)
 
-	client, err := createAuthenticatedClient(context.Background(), t.config.JsonServerURL)
+	client, err := createAuthenticatedClient(context.Background(), t.config.ReactAppURL) //we use the reactapp url because we have to implement the security in the application due to the way the react app will load the json -- having to first send an OPTIONS request which needs to just be allowed through since it will never have a bearer token. And then the bearer token we do send for the gotenberg request to the react app will always be the one forwarded in the json fetch request, we cannot override it with the correct one even! so here, we just be consistent.
 	if err != nil {
 		return "", fmt.Errorf("failed to create authenticated client: %v", err)
 	}
@@ -104,6 +104,10 @@ func (t *Tuner) GetBaselineJSON(baseline string) (string, error) {
 		return "", fmt.Errorf("Failed to make the HTTP request: %v", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Got undesired status code in response from JSON server: %d", resp.StatusCode)
+	}
 
 	//resp, err := http.Get(jsonRequestURL)
 	//if err != nil {
