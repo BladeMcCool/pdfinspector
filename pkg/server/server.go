@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/rs/zerolog/log"
 	"io"
 	"mime"
@@ -53,6 +54,20 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Use(structuredLogger)                     // Log requests ... better
 	router.Use(middleware.Recoverer)                 // Recover from panics
 	router.Use(middleware.Timeout(15 * time.Minute)) // Set a request timeout
+
+	// CORS middleware configuration (thanks ChatGPT!)
+	router.Use(cors.Handler(cors.Options{
+		// Allow all origins, or specify the ones you need
+		AllowedOrigins: []string{"*"},
+		// Allow all methods
+		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		// Allow all headers, including the Authorization header
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		// Allow credentials
+		AllowCredentials: true,
+		// Set max preflight age to avoid repeated preflight requests (in seconds)
+		MaxAge: 300,
+	}))
 
 	// Define open routes
 	router.Get("/", s.rootHandler)                 // Root handler
