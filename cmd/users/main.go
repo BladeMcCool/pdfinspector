@@ -4,30 +4,148 @@ import (
 	"bufio"
 	"cloud.google.com/go/storage"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"google.golang.org/api/iterator"
 	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
-	// Define your CLI flags
+	var mode string
 	var usersdir string
 	var bucketname string
 	var count int
 	var makekeys int
+	var doDelete bool
+
+	flag.StringVar(&mode, "mode", "users", "mode: users, clean, ...")
+
 	flag.StringVar(&usersdir, "usersdir", "users", "path to users dir")
 	flag.StringVar(&bucketname, "bucketname", "my-stinky-bucket", "gcs bucket where stuff lives")
 	flag.IntVar(&count, "count", 100, "count of credits to issue new users")
 	flag.IntVar(&makekeys, "makekeys", 0, "make some keys, print them and exit")
 
+	flag.BoolVar(&doDelete, "delete", false, "perform delete of old objects or just report what should go")
+
 	// Parse the flags
 	flag.Parse()
 
+	if mode == "users" {
+		makeUsers(usersdir, bucketname, count, makekeys)
+	} else if mode == "clean" {
+		cleanOutputs("outputs", bucketname, 1*24*time.Hour, doDelete)
+	}
+}
+
+var preserveUuids = map[string]bool{
+	"5b3f3fe4-7a12-4437-aa8d-8910f7730d3f": true,
+	"351d2e84-455b-4603-95d6-77371e5730d4": true,
+	"fa268485-bc2e-4085-9520-8e960edc3169": true,
+	"b8c626d9-91d4-414a-9795-ae59bf0125c6": true,
+	"130b51c7-8a3a-4250-b8fd-0257a91a5492": true,
+}
+
+func cleanOutputs(outputsDir, bucketName string, ttl time.Duration, doDelete bool) {
+
+	log.Printf("setting up gcs client ...")
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create GCS client: %v", err)
+	}
+
+	bucket := client.Bucket(bucketName)
+	query := &storage.Query{
+		Prefix: outputsDir + "/",
+	}
+
+	it := bucket.Objects(ctx, query)
+
+	//we have to collect the prefixes first because they don't have any actual date information attached
+	// (guessing b/c not the actual objects?) and so we have to inspect something inside the "folder" to get a date.
+	checkedOutputs := map[string]time.Time{}
+	for {
+		objAttrs, err := it.Next()
+		if errors.Is(err, iterator.Done) {
+			break
+		}
+
+		// Extract the UUID from the object name
+		// Assuming object names are in the format "outputs/{uuid}/..."
+		name := objAttrs.Name
+		// Remove the outputsDir prefix
+		relativePath := strings.TrimPrefix(name, outputsDir+"/")
+		// Split the relative path to get the UUID
+		parts := strings.SplitN(relativePath, "/", 2)
+		if len(parts) < 1 || parts[0] == "" {
+			// Skip if we can't get a UUID
+			log.Printf("dont know what to do with %s", name)
+			continue
+		}
+		uuid := parts[0]
+
+		// Check if we've already processed this UUID
+		if _, exists := checkedOutputs[uuid]; exists {
+			continue
+		}
+		// Mark UUID as processed
+		checkedOutputs[uuid] = objAttrs.Created
+	}
+
+	deleteIfOlderThan := time.Now().Add(-ttl)
+	deletedItemsTotal := 0
+	deletedJobs := 0
+	for uuid, created := range checkedOutputs {
+		if preserveUuids[uuid] {
+			log.Printf("preserving output %s indefinitely", uuid)
+			continue
+		}
+		if !created.Before(deleteIfOlderThan) {
+			continue
+		}
+		if !doDelete {
+			log.Printf("UUID '%s' is older than allowed; (should delete)", uuid)
+			continue
+		}
+		log.Printf("Deleting UUID '%s' ... (Dated: %s)", uuid, created.Format("2006-01-02T15:04:05Z"))
+
+		// Delete all objects under this UUID directory
+		delPrefix := fmt.Sprintf("%s/%s/", outputsDir, uuid)
+		delQuery := &storage.Query{
+			Prefix: delPrefix,
+		}
+		delIt := bucket.Objects(ctx, delQuery)
+		for {
+			delAttrs, err := delIt.Next()
+			if errors.Is(err, iterator.Done) {
+				break
+			}
+			if err != nil {
+				log.Printf("error iterating over objects for deletion in prefix %s: %v", delPrefix, err)
+				return
+			}
+			// Delete the object
+			objHandle := bucket.Object(delAttrs.Name)
+			if err := objHandle.Delete(ctx); err != nil {
+				log.Printf("error deleting object %s: %v", delAttrs.Name, err)
+			}
+			deletedItemsTotal++
+		}
+		deletedJobs++
+	}
+	log.Printf("Deleted %d jobs (%d total objects)", deletedJobs, deletedItemsTotal)
+	//todo maybe report back or smth instead of just the log output.
+
+}
+
+func makeUsers(usersdir, bucketname string, count, makekeys int) {
 	// Print a greeting
 	if makekeys != 0 {
 		for i := 0; i < makekeys; i++ {
@@ -94,6 +212,7 @@ func main() {
 	_ = client
 	issueCreditsToNewUsers(client, userKeys, bucketname, count)
 }
+
 func randomString(n int) string {
 	b := make([]byte, n)
 	for i := range b {

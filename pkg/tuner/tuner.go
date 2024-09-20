@@ -52,6 +52,7 @@ func NewTuner(config *config.ServiceConfig) *Tuner {
 }
 
 func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
+	job.OutputDir = fmt.Sprintf("%s/%s", t.config.LocalPath, job.Id)
 
 	if job.BaselineJSON == "" && job.Baseline != "" && job.IsForAdmin {
 		baselineJSON, err := t.GetBaselineJSON(job.Baseline)
@@ -76,24 +77,37 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 	if mainPrompt == "" {
 		mainPrompt, err = t.GetDefaultPrompt(layout)
 		if err != nil {
-			log.Error().Msgf("error from reading input prompt: ", err)
+			job.Log().Error().Msgf("error from reading input prompt: ", err)
 			return err
 		}
-		log.Info().Msgf("used standard main prompt: %s", mainPrompt)
+		job.Log().Info().Msgf("used standard main prompt: %s", mainPrompt)
 	}
 	job.MainPrompt = mainPrompt
-	job.OutputDir = fmt.Sprintf("%s/%s", t.config.LocalPath, job.Id.String())
 	return nil
 }
 
 func (t *Tuner) GetBaselineJSON(baseline string) (string, error) {
 	// get JSON of the current complete resume including all the hidden stuff, this hits an express server that imports the reactresume resumedata.mjs and outputs it as json.
 	jsonRequestURL := fmt.Sprintf("%s?baseline=%s", t.config.JsonServerURL, baseline)
-	resp, err := http.Get(jsonRequestURL)
+
+	client, err := createAuthenticatedClient(context.Background(), t.config.ReactAppURL) //we use the reactapp url because we have to implement the security in the application due to the way the react app will load the json -- having to first send an OPTIONS request which needs to just be allowed through since it will never have a bearer token. And then the bearer token we do send for the gotenberg request to the react app will always be the one forwarded in the json fetch request, we cannot override it with the correct one even! so here, we just be consistent.
+	if err != nil {
+		return "", fmt.Errorf("failed to create authenticated client: %v", err)
+	}
+	req, err := http.NewRequest("GET", jsonRequestURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to define HTTP request: %v", err)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("Failed to make the HTTP request: %v", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Got undesired status code in response from JSON server: %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

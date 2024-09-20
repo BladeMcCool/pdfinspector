@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"os"
 	"path/filepath"
@@ -28,7 +29,8 @@ type Job struct {
 	BaselineJSON   string `json:"baseline_json"` //the actual layout to use is a property of the baseline resumedata.
 	CustomPrompt   string `json:"prompt"`
 	StyleOverride  string `json:"style_override"` //eg fluffy
-	Id             uuid.UUID
+	Id             string
+	OverrideJobId  *string `json:"job_id,omitempty"` //generally speaking this can't be set by a user, is just for admin/testing
 
 	//pulled up or determined from the baseline or baselinejson, could be overrode (perhaps) by job.
 	Layout     string
@@ -43,7 +45,11 @@ type Job struct {
 
 	//anything else we want as options per-job? i was thinking include_bio might be a good option. (todo: ability to not show it on functional, ability to show it on chrono, and then json schema tuning depending on if it is set or not so that the gpt can know to specify it - and dont include it when it shouldn't!)
 	//idk but i want to report to the user their balance and i dont really want to make a whole new struct for it
+	UserKey             string
 	UserCreditRemaining int
+
+	//
+	Logger *zerolog.Logger
 }
 
 var defaultAcceptableRatio = 0.88
@@ -53,14 +59,24 @@ var defaultMaxAttempts = 7 //this should probably come from env
 
 func NewDefaultJob() *Job {
 	job := &Job{}
-	job.PrepareDefault()
+	job.PrepareDefault(nil)
 	return job
 }
-func (job *Job) PrepareDefault() {
-	job.Id = uuid.New()
+func (job *Job) PrepareDefault(jobId *string) {
+	if jobId == nil || *jobId == "" {
+		job.Id = uuid.New().String()
+	} else {
+		job.Id = *jobId
+	}
 	job.AcceptableRatio = defaultAcceptableRatio
 	job.MaxAttempts = defaultMaxAttempts
+	job.Logger = job.setLogger()
 }
+
+//	func (job *Job) OverrideJobId(jobId string) {
+//		job.Id = jobId
+//		job.Logger = job.setLogger()
+//	}
 func (job *Job) ValidateForNonAdmin() error {
 	//this is just more of a thought than perhaps a good idea. the failure modes can be many and we should just return api credits if job failed. todo.
 	if job.Baseline != "" {
@@ -151,4 +167,15 @@ func ReadInput(dir string) (*Input, error) {
 		JD:       string(jdContent),
 		APIKey:   apiKey,
 	}, nil
+}
+
+func (job *Job) setLogger() *zerolog.Logger {
+	logger := log.With().
+		Str("job_id", job.Id).
+		Logger()
+	return &logger
+}
+
+func (job *Job) Log() *zerolog.Logger {
+	return job.Logger
 }

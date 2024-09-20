@@ -2,9 +2,13 @@ package tuner
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/disintegration/imaging"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/oauth2"
+	"google.golang.org/api/idtoken"
 	"image"
 	"io"
 	"mime/multipart"
@@ -25,15 +29,25 @@ type inspectResult struct {
 	LastPageContentRatio float64
 }
 
+type GotenbergHTTPError struct {
+	HttpResponseCode int
+	HttpError        bool
+	Message          string
+}
+
+func (e *GotenbergHTTPError) Error() string {
+	return e.Message
+}
+
 func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.Job) error {
 	// Step 1: Create a new buffer and a multipart writer
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
-
+	ctx := context.Background()
 	// Step 2: Add the "url" field to the multipart form
 	urlField, err := writer.CreateFormField("url")
 	if err != nil {
-		return fmt.Errorf("failed to create form field: %v", err)
+		return fmt.Errorf("failed to create url form field: %v", err)
 	}
 
 	var urlToRender string
@@ -43,8 +57,9 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 		if err != nil {
 			return err
 		}
-		jsonPathFragment := url.PathEscape(fmt.Sprintf("%s/attempt%d", job.Id.String(), attempt))
-		fmt.Sprintf("%s/attempt%d", job.Id.String(), attempt)
+
+		//note: json server will expect gcp auth token for react server, because react server needs to receive it to load the page, and b/c its headless chrome its going to forward _that_ token to js fetch requests (you can't even override it if you wanted to due to how chrome treats bearer tokens)
+		jsonPathFragment := url.PathEscape(fmt.Sprintf("%s/attempt%d", job.Id, attempt))
 		urlToRender = fmt.Sprintf("%s/?jsonserver=%s&resumedata=%s&layout=%s", config.ReactAppURL, jsonServerHostname, jsonPathFragment, job.Layout)
 	} else {
 		//legacy way, presumably json server is on local host or smth.
@@ -65,6 +80,15 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 		return fmt.Errorf("failed to write to form field: %v", err)
 	}
 
+	extraHttpHeaders, err := getExtraHttpHeadersForGotenbergRequest(ctx, config)
+	if err != nil {
+		return fmt.Errorf("failed to obtain tokens for react server: %v", err)
+	}
+	err = writer.WriteField("extraHttpHeaders", extraHttpHeaders)
+	if err != nil {
+		return fmt.Errorf("failed to create extraHttpHeaders form field: %v", err)
+	}
+
 	// Close the multipart writer to finalize the form data
 	err = writer.Close()
 	if err != nil {
@@ -83,15 +107,25 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 
 	log.Info().Msgf("Will ask gotenberg at %s to render page at %s", gotenbergRequestURL, urlToRender)
 	// Step 6: Send the HTTP request
-	client := &http.Client{}
+	client, err := createAuthenticatedClient(ctx, config.GotenbergURL)
+	if err != nil {
+		return fmt.Errorf("failed to create authenticated client: %v", err)
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send HTTP request: %v", err)
+		log.Trace().Msgf("failed to send HTTP request: %v", err)
+		return err
 	}
 	defer resp.Body.Close()
-
-	// Step 7: Check the response status code
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusServiceUnavailable {
+			return &GotenbergHTTPError{
+				HttpResponseCode: resp.StatusCode,
+				HttpError:        true,
+				Message:          "Gotenberg gave retryable http error code",
+			}
+		}
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
@@ -120,6 +154,50 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 	log.Info().Msgf("PDF saved to %s", outputFilePath)
 
 	return nil
+}
+
+func getExtraHttpHeadersForGotenbergRequest(ctx context.Context, config *config.ServiceConfig) (string, error) {
+	//due to GCP internals and not wanting these services wide open to the public internet we have to pass some tokens along.
+	//we need to prepare them here because we can't make gotenberg figure this out.
+
+	// Step 1: Obtain the ID token for the React service
+	reactIDToken, err := getIDToken(ctx, config.ReactAppURL)
+	if err != nil {
+		return "", fmt.Errorf("Error obtaining ID token for React service: %v", err)
+	}
+
+	// Step 2: Prepare the extra HTTP headers as a JSON string
+	extraHeaders := map[string]string{
+		"Authorization": "Bearer " + reactIDToken, //note, due to how chrome works, this will also be the token that gets forwarded to json server in js fetch request, there is no way to change it.
+	}
+	extraHeadersJSON, err := json.Marshal(extraHeaders)
+	if err != nil {
+		return "", fmt.Errorf("Error marshalling extra headers: %v", err)
+	}
+	return string(extraHeadersJSON), nil
+}
+
+func getIDToken(ctx context.Context, audience string) (string, error) {
+	tokenSource, err := idtoken.NewTokenSource(ctx, audience)
+	if err != nil {
+		return "", fmt.Errorf("idtoken.NewTokenSource: %v", err)
+	}
+
+	token, err := tokenSource.Token()
+	if err != nil {
+		return "", fmt.Errorf("tokenSource.Token: %v", err)
+	}
+
+	return token.AccessToken, nil
+}
+
+func createAuthenticatedClient(ctx context.Context, audience string) (*http.Client, error) {
+	tokenSource, err := idtoken.NewTokenSource(ctx, audience)
+	if err != nil {
+		return nil, fmt.Errorf("idtoken.NewTokenSource: %v", err)
+	}
+	client := oauth2.NewClient(ctx, tokenSource)
+	return client, nil
 }
 
 func extractHostname(rawURL string) (string, error) {
@@ -179,6 +257,10 @@ func dumpPDFToPNG(attempt int, outputDir string, config *config.ServiceConfig) e
 	log.Trace().Msg("Here before checking for strings")
 	if strings.Contains(string(data), "Uncaught runtime errors") {
 		return fmt.Errorf("'Uncaught runtime errors' string detected in PDF contents.")
+	}
+	log.Trace().Msg("Here before proceeding to image dumping")
+	if strings.Contains(string(data), "Error loading data: Failed to fetch") {
+		return fmt.Errorf("'Error loading data: Failed to fetch' string detected in PDF contents.")
 	}
 	log.Trace().Msg("Here before proceeding to image dumping")
 

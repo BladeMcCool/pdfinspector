@@ -2,7 +2,7 @@
 
 ## Overview
 
-`pdfinspector` is a project designed to tune a resume document into a perfect job description matching one-page PDF. After submitting a job description and base resume data to the service, it gathers metadata from OpenAI, then generates and iterates on suggested resume content based on user-provided or default prompts. OpenAI helps refine the resume to match the job description, aiming for a single-page result. Once the resume fits the requirements, the final PDF is returned to the user.
+`pdfinspector` is a project designed to tune baseline resume JSON data into a perfect Job-Description-Matching single page PDF. After submitting a job description and base resume data to the service, it gathers metadata from OpenAI, then generates and iterates on suggested resume content based on user-provided or default prompts. OpenAI helps refine the resume to match the job description, aiming for a single-page result. Once the resume fits the requirements, the final PDF is returned to the user.
 
 ## Background
 
@@ -30,6 +30,9 @@ Brock Henderson - Landscaper
 You can use real job history and personal info in the nested baseline resume data JSON to have it just tune it up.
 
 ## Pieces of the Puzzle
+
+### OpenAI API with structured output
+We leverage the native JSON output capability of the API with some prompt engineering to iteratively steer the output as desired. Prior to resume adjustment, some metadata about the given job description is garnered via OpenAI. 
 
 ### JSON Server
 The JSON server is a backend service responsible for providing the resume update attempts as JSON data. It works by retrieving the resume content updates from Google Cloud Storage (GCS), making them available to the React frontend. The frontend fetches this data to present the iterations of the resume to the user, enabling further refinement based on feedback and OpenAI suggestions.
@@ -90,7 +93,7 @@ Ghostscript is used to manipulate PDFs, rendering them to images or extracting t
 Currently running on 4 deployed containers in GCP's Cloud Run serverless platform.
 
 ### Free Access
-DM for free api key with 100 credits to mess around with it.
+DM for a free API key with 100 credits to mess around with it.
 
 ### Curl request examples
 
@@ -174,3 +177,6 @@ curl --location "https://pdfinspector-1025621488749.us-central1.run.app/streamjo
 }'
 ```
 > https://pdfinspector-tzoh77a45q-uc.a.run.app/joboutput/130b51c7-8a3a-4250-b8fd-0257a91a5492/Resume.pdf
+
+### License 
+GPL License, I guess. No warranty, bla bla. DWTFYW in spirit tho.
