@@ -109,12 +109,6 @@ func (t *Tuner) GetBaselineJSON(baseline string) (string, error) {
 		return "", fmt.Errorf("Got undesired status code in response from JSON server: %d", resp.StatusCode)
 	}
 
-	//resp, err := http.Get(jsonRequestURL)
-	//if err != nil {
-	//	return "", fmt.Errorf("Failed to make the HTTP request: %v", err)
-	//}
-	//defer resp.Body.Close()
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("Failed to read the response body: %v", err)

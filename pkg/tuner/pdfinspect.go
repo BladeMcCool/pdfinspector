@@ -58,20 +58,8 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 			return err
 		}
 
-		//todo: figure another way to lock down the json server because due to the fact that OPTIONS preflight request in the browser for doing a cross site fetch method _will not ever_ use a bearer auth token, it is impossible therefor to do the successful preflight from headless chrome in deployed gotenberg to the json server.
-		//  so we have to deploy the json server with --allow-unauthenticated
-		//  current plan is to leverage the fact that the js based fetch request is just going to send the react server token along. we'll prepare the json server to accept that.
-
-		//jsonIDToken, err := getIDToken(ctx, config.JsonServerURL)
-		//if err != nil {
-		//	return fmt.Errorf("failed to obtain token for json server: %v", err)
-		//}
-		//escapedToken := url.QueryEscape(jsonIDToken)
-		//_ = escapedToken
-		//log.Trace().Msgf("token to access json server: %s", jsonIDToken)
-		//
+		//note: json server will expect gcp auth token for react server, because react server needs to receive it to load the page, and b/c its headless chrome its going to forward _that_ token to js fetch requests (you can't even override it if you wanted to due to how chrome treats bearer tokens)
 		jsonPathFragment := url.PathEscape(fmt.Sprintf("%s/attempt%d", job.Id, attempt))
-		//urlToRender = fmt.Sprintf("%s/?jsonserver=%s&resumedata=%s&layout=%s&token=%s", config.ReactAppURL, jsonServerHostname, jsonPathFragment, job.Layout, escapedToken)
 		urlToRender = fmt.Sprintf("%s/?jsonserver=%s&resumedata=%s&layout=%s", config.ReactAppURL, jsonServerHostname, jsonPathFragment, job.Layout)
 	} else {
 		//legacy way, presumably json server is on local host or smth.
@@ -123,48 +111,6 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 	if err != nil {
 		return fmt.Errorf("failed to create authenticated client: %v", err)
 	}
-	//client := &http.Client{}
-	//
-	//gotenSuccess := false
-	//gotenLastCode := 0
-	//var resp *http.Response
-	////var possiblyCloableBodies []io.ReadCloser
-	//for gotenbergAttempt := 0; gotenbergAttempt < 3; gotenbergAttempt++ {
-	//	resp, err = client.Do(req)
-	//	if err != nil {
-	//		log.Trace().Msgf("failed to send HTTP request: %v", err)
-	//		continue
-	//	}
-	//	//possiblyCloableBodies = append(possiblyCloableBodies, resp.Body)
-	//	//if resp.StatusCode != http.StatusOK {
-	//	//	return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	//	//}
-	//	gotenLastCode = resp.StatusCode
-	//	if gotenbergAttempt < 1 {
-	//		log.Trace().Msg("debug just pretending we failed the first gotenberg try")
-	//		resp.Body.Close()
-	//		continue
-	//	}
-	//	if gotenLastCode == http.StatusOK {
-	//		gotenSuccess = true
-	//		break
-	//	}
-	//	resp.Body.Close()
-	//	if gotenLastCode != http.StatusServiceUnavailable {
-	//		log.Trace().Msgf("unexpected response code from gotenberg: %d", gotenLastCode)
-	//		break
-	//	} else {
-	//		log.Info().Msg("Gotenberg request failed with a retryable error.")
-	//		time.Sleep(3 * time.Second)
-	//	}
-	//}
-	//defer resp.Body.Close()
-	//
-	//if !gotenSuccess {
-	//	// Step 7: Check the response status code
-	//	return fmt.Errorf("unexpected status code from gotenberg: %d", gotenLastCode)
-	//
-	//}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -211,9 +157,8 @@ func makePDFRequestAndSave(attempt int, config *config.ServiceConfig, job *job.J
 }
 
 func getExtraHttpHeadersForGotenbergRequest(ctx context.Context, config *config.ServiceConfig) (string, error) {
-	//due to GCP internals and not wanting these services wide open to the public internet we have to pass some tokens along
-	//we need to prepare them here because we can't make gotenberg figure this out, and the react app also has no way to figure it out on its own
-	//to be able to talk to the json server. so we'll prepare the tokens here and pass them along. fingers crossed that this works!
+	//due to GCP internals and not wanting these services wide open to the public internet we have to pass some tokens along.
+	//we need to prepare them here because we can't make gotenberg figure this out.
 
 	// Step 1: Obtain the ID token for the React service
 	reactIDToken, err := getIDToken(ctx, config.ReactAppURL)
@@ -223,8 +168,7 @@ func getExtraHttpHeadersForGotenbergRequest(ctx context.Context, config *config.
 
 	// Step 2: Prepare the extra HTTP headers as a JSON string
 	extraHeaders := map[string]string{
-		"Authorization": "Bearer " + reactIDToken,
-		//"JsonIdToken":   jsonIDToken,
+		"Authorization": "Bearer " + reactIDToken, //note, due to how chrome works, this will also be the token that gets forwarded to json server in js fetch request, there is no way to change it.
 	}
 	extraHeadersJSON, err := json.Marshal(extraHeaders)
 	if err != nil {
