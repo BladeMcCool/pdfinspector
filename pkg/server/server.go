@@ -73,6 +73,7 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Get("/", s.rootHandler)                 // Root handler
 	router.Get("/health", s.healthHandler)         // Health check handler
 	router.Get("/joboutput/*", s.jobOutputHandler) // Get the output
+	router.Get("/schema/{layout}", s.GetExpectedResponseJsonSchemaHandler)
 
 	// Define gated routes
 	router.Group(func(protected chi.Router) {
@@ -430,4 +431,24 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 
 	// Credit deduction successful
 	return nil, newCredit
+}
+
+func (s *pdfInspectorServer) GetExpectedResponseJsonSchemaHandler(w http.ResponseWriter, r *http.Request) {
+	layout := chi.URLParam(r, "layout")
+	log.Info().Msgf("here in GetExpectedResponseJsonSchemaHandler for %s", layout)
+	schema, err := s.jobRunner.Tuner.GetExpectedResponseJsonSchema(layout)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Here is how we would add some random key of info to the schema before we serialize it back and send it out
+	//if schemaMap, ok := schema.(map[string]interface{}); ok {
+	//	schemaMap["additionalInfo"] = "Some extra info"
+	//}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(schema); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }

@@ -20,6 +20,7 @@ func (j *JobRunner) RunJob(job *job.Job, updates chan job.JobStatus) {
 		tuner.SendJobUpdate(updates, fmt.Sprintf("credit remaining: %d", job.UserCreditRemaining))
 	}
 	job.Log().Trace().Msgf("do something with this job: %#v", job)
+	//return
 
 	t := j.Tuner
 
