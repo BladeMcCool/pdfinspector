@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"cloud.google.com/go/storage"
 	"context"
 	"encoding/json"
@@ -11,10 +10,11 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/api/idtoken"
 	"io"
+	"math"
 	"mime"
 	"net/http"
-	"os"
 	"path/filepath"
 	"pdfinspector/pkg/config"
 	"pdfinspector/pkg/filesystem"
@@ -23,14 +23,16 @@ import (
 	"pdfinspector/pkg/tuner"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type pdfInspectorServer struct {
-	config    *config.ServiceConfig
-	router    *chi.Mux
-	jobRunner *jobrunner.JobRunner
-	userKeys  map[string]bool // To store the loaded user API keys
+	config     *config.ServiceConfig
+	router     *chi.Mux
+	jobRunner  *jobrunner.JobRunner
+	userKeys   map[string]bool // To store the loaded user API keys
+	userKeysMu sync.RWMutex
 }
 
 func NewPdfInspectorServer(config *config.ServiceConfig) *pdfInspectorServer {
@@ -40,9 +42,9 @@ func NewPdfInspectorServer(config *config.ServiceConfig) *pdfInspectorServer {
 			Config: config,
 			Tuner:  tuner.NewTuner(config),
 		},
+		userKeys: map[string]bool{},
 	}
 	server.initRoutes()
-	server.LoadUserKeys()
 	return server
 }
 
@@ -62,7 +64,7 @@ func (s *pdfInspectorServer) initRoutes() {
 		// Allow all methods
 		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		// Allow all headers, including the Authorization header
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Credential"},
 		// Allow credentials
 		AllowCredentials: true,
 		// Set max preflight age to avoid repeated preflight requests (in seconds)
@@ -74,6 +76,7 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Get("/health", s.healthHandler)         // Health check handler
 	router.Get("/joboutput/*", s.jobOutputHandler) // Get the output
 	router.Get("/schema/{layout}", s.GetExpectedResponseJsonSchemaHandler)
+	router.Get("/getapitoken", s.GetAPIToken)
 
 	// Define gated routes
 	router.Group(func(protected chi.Router) {
@@ -232,7 +235,7 @@ func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Req
 	// Use the rejoined path as needed
 	log.Info().Msgf("Result Path: %s", resultPath)
 
-	data, err := s.jobRunner.Tuner.Fs.ReadFile(resultPath)
+	data, err := s.jobRunner.Tuner.Fs.ReadFile(r.Context(), resultPath)
 	if err != nil {
 		http.Error(w, "Could not read file from GCS", http.StatusBadRequest)
 		return
@@ -301,8 +304,8 @@ func (s *pdfInspectorServer) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Check if the token is a known user by checking the UserKeys map
-		if _, ok := s.userKeys[bearerToken]; !ok {
+		knownApiKey, err := s.checkApiKeyExists(r.Context(), bearerToken)
+		if err != nil || knownApiKey == false {
 			// If the token is not a known user, deny access
 			http.Error(w, "Unauthorized: Unknown user token", http.StatusUnauthorized)
 			return
@@ -318,55 +321,52 @@ func (s *pdfInspectorServer) AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// LoadUserKeys reads all files from the "users/" directory that match "list*.txt"
-// and reads newline-separated API keys into the UserKeys array.
-func (s *pdfInspectorServer) LoadUserKeys() {
-	// Define the directory and file pattern
-	dir := "users/"
-	pattern := "list*.txt"
+// Method to check if an API key exists using GCS and cache results.
+func (s *pdfInspectorServer) checkApiKeyExists(ctx context.Context, apiKey string) (bool, error) {
+	// 1. First, check the map (knownUsers) for the API key.
+	s.userKeysMu.RLock()
+	actualApiKey, hasRecordOfChecking := s.userKeys[apiKey]
+	s.userKeysMu.RUnlock()
 
-	// Use filepath.Glob to find all matching files
-	files, err := filepath.Glob(filepath.Join(dir, pattern))
-	if err != nil {
-		log.Info().Msgf("Error finding files in %s: %v", dir, err)
-		return
+	// If the API key is found in the cache, return the cached result.
+	if hasRecordOfChecking {
+		return actualApiKey, nil
 	}
 
-	// If no files match the pattern, log it and return
-	if len(files) == 0 {
-		log.Info().Msgf("No files matching pattern %s found in directory %s", pattern, dir)
-		return
+	// 2. If the API key is not found in the cache, check GCS.
+	// First, check if s.jobRunner.Tuner.Fs is a GcpFilesystem.
+	gcpFs, ok := s.jobRunner.Tuner.Fs.(*filesystem.GCSFileSystem)
+	if !ok {
+		return false, fmt.Errorf("file system is not GCSFileSystem")
 	}
 
-	s.userKeys = make(map[string]bool)
+	// Use the GCS client to check for the file's existence.
+	client := gcpFs.Client
+	bucketName := s.config.GcsBucket
+	objectName := fmt.Sprintf("users/%s/credit", apiKey) // Assuming the API keys are stored in a "keys" folder
 
-	// Iterate over each file
-	for _, file := range files {
-		// Open the file for reading
-		f, err := os.Open(file)
-		if err != nil {
-			log.Error().Msgf("Error opening file %s: %v", file, err)
-			continue
-		}
-		defer f.Close()
+	// 3. Check if the API key file exists in GCS.
+	bucket := client.Bucket(bucketName)
+	obj := bucket.Object(objectName)
 
-		// Use bufio.Scanner to read the file line by line
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			// Each line is an API key, add it to UserKeys
-			apiKey := strings.TrimSpace(scanner.Text())
-			if apiKey != "" {
-				s.userKeys[apiKey] = true
-			}
-		}
-
-		// Log any scanning errors (such as malformed input)
-		if err := scanner.Err(); err != nil {
-			log.Error().Msgf("Error reading file %s: %v", file, err)
-		}
+	_, err := obj.Attrs(ctx)
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		// The API key file does not exist, cache the result as false.
+		log.Info().Msgf("Discovered and cached the fact that api key %s does _not_ exist.", apiKey)
+		s.userKeysMu.Lock()
+		s.userKeys[apiKey] = false
+		s.userKeysMu.Unlock()
+		return false, nil
+	} else if err != nil {
+		// Some other error occurred.
+		return false, fmt.Errorf("error checking API key in GCS: %v", err)
 	}
-
-	log.Info().Msgf("Loaded %d user keys", len(s.userKeys))
+	log.Info().Msgf("Discovered and cached the fact that api key %s exists.", apiKey)
+	// 4. If the file exists, cache the result as true.
+	s.userKeysMu.Lock()
+	s.userKeys[apiKey] = true
+	s.userKeysMu.Unlock()
+	return true, nil
 }
 
 func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey string) (error, int) {
@@ -451,4 +451,127 @@ func (s *pdfInspectorServer) GetExpectedResponseJsonSchemaHandler(w http.Respons
 	if err := json.NewEncoder(w).Encode(schema); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// GetAPIToken handles the verification of the Google ID token sent from the client.
+func (s *pdfInspectorServer) GetAPIToken(w http.ResponseWriter, r *http.Request) {
+	log.Info().Msg("here in getAPItoken")
+	if s.config.FrontendClientID == "" {
+		//because if this is blank and then we just try to validate against a blank audience then it will accept any token i think regardless of audience or where it came from.
+		http.Error(w, "Error: Misconfigured server", http.StatusInternalServerError)
+		return
+	}
+
+	credential := r.Header.Get("X-Credential")
+	if credential == "" {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	payload, err := idtoken.Validate(r.Context(), credential, s.config.FrontendClientID)
+	if err != nil {
+		http.Error(w, "Invalid ID token", http.StatusUnauthorized)
+		return
+	}
+
+	// Step 3: Extract user identifier (e.g., email, sub) from the payload
+	userID := payload.Subject // The unique user ID (sub claim)
+	email, ok := payload.Claims["email"].(string)
+	log.Info().Msgf("we thinks %s just logged in, %#v", userID, payload)
+	if !ok || email == "" {
+		http.Error(w, "Email not found in token", http.StatusUnauthorized)
+		return
+	}
+
+	apiKey, err := s.GetBestApiKeyForUser(r.Context(), userID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Could not determine best APIKey: %s", err.Error()), http.StatusUnauthorized)
+	}
+
+	// Step 5: Return the API key as a JSON response
+	w.Header().Set("Content-Type", "text/plain")
+	//response := map[string]string{"apiKey": apiKey}
+	//json.NewEncoder(w).Encode(response)
+	w.Write([]byte(apiKey))
+}
+
+// GetBestApiKeyForUser retrieves the best API key for a user based on the least positive remaining credits.
+func (s *pdfInspectorServer) GetBestApiKeyForUser(ctx context.Context, userID string) (string, error) {
+	// Step 1: Read the API keys for the user
+	apiKeys, err := s.ReadApiKeysForUser(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("failed to read API keys for user %s: %w", userID, err)
+	}
+	if len(apiKeys) == 0 {
+		return "", fmt.Errorf("no API keys found for user %s", userID)
+	}
+
+	// Step 2: For each API key, get the credit and find the one with the least positive credits
+	var bestApiKey string
+	minCredits := math.MaxInt64 // Initialize to maximum int value
+	for _, apiKey := range apiKeys {
+		credits, err := s.GetCreditsForApiKey(ctx, apiKey)
+		if err != nil {
+			log.Printf("Failed to get credits for API key %s: %v", apiKey, err)
+			continue
+		}
+		if credits <= 0 {
+			log.Printf("API key %s has zero or negative credits (%d), skipping", apiKey, credits)
+			continue
+		}
+		if credits < minCredits {
+			minCredits = credits
+			bestApiKey = apiKey
+		}
+	}
+
+	if bestApiKey == "" {
+		return "", fmt.Errorf("no API keys with positive credits found for user %s", userID)
+	}
+
+	// Return the best API key
+	log.Printf("Selected API key %s with %d credits for user %s", bestApiKey, minCredits, userID)
+	return bestApiKey, nil
+}
+
+// ReadApiKeysForUser reads the API keys for a user from GCS.
+func (s *pdfInspectorServer) ReadApiKeysForUser(ctx context.Context, userID string) ([]string, error) {
+	data, err := s.jobRunner.Tuner.Fs.ReadFile(ctx, fmt.Sprintf("sso/%s/apikeys", userID))
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, fmt.Errorf("API keys file does not exist for user %s", userID)
+		}
+		return nil, fmt.Errorf("failed to read API keys file for user %s: %w", userID, err)
+	}
+
+	// Split the data into lines and clean up the API keys
+	lines := strings.Split(string(data), "\n")
+	var apiKeys []string
+	for _, line := range lines {
+		apiKey := strings.TrimSpace(line)
+		if apiKey != "" {
+			apiKeys = append(apiKeys, apiKey)
+		}
+	}
+	return apiKeys, nil
+}
+
+// GetCreditsForApiKey retrieves the remaining credits for a given API key from GCS.
+func (s *pdfInspectorServer) GetCreditsForApiKey(ctx context.Context, apiKey string) (int, error) {
+	data, err := s.jobRunner.Tuner.Fs.ReadFile(ctx, fmt.Sprintf("users/%s/credit", apiKey))
+
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			log.Printf("Credit file does not exist for API key %s", apiKey)
+			return 0, nil // Skip this API key
+		}
+		return 0, fmt.Errorf("failed to read credit file for API key %s: %w", apiKey, err)
+	}
+
+	creditStr := strings.TrimSpace(string(data))
+	credits, err := strconv.Atoi(creditStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid credit value for API key %s: %w", apiKey, err)
+	}
+	return credits, nil
 }
