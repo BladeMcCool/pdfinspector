@@ -78,7 +78,6 @@ func (gcs *GCSFileSystem) Writer(filename string) (io.Writer, error) {
 }
 
 func (gcs *GCSFileSystem) ReadFile(ctx context.Context, filename string) ([]byte, error) {
-	//ctx := context.Background()
 	rc, err := gcs.Client.Bucket(gcs.BucketName).Object(filename).NewReader(ctx)
 	if err != nil {
 		return nil, err

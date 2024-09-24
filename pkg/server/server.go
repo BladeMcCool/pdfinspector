@@ -45,7 +45,6 @@ func NewPdfInspectorServer(config *config.ServiceConfig) *pdfInspectorServer {
 		userKeys: map[string]bool{},
 	}
 	server.initRoutes()
-	//server.LoadUserKeys()
 	return server
 }
 
@@ -370,61 +369,6 @@ func (s *pdfInspectorServer) checkApiKeyExists(ctx context.Context, apiKey strin
 	return true, nil
 }
 
-//// LoadUserKeys reads all files from the "users/" directory that match "list*.txt"
-//// and reads newline-separated API keys into the UserKeys array.
-//func (s *pdfInspectorServer) LoadUserKeys() {
-//	log.Error().Msg("LoadUserKeys : this should be deprecated i think.")
-//	// todo
-//	//deprecate this ... remove it, stop bundling the list in the docker image build, and anything else.
-//
-//	// Define the directory and file pattern
-//	dir := "users/"
-//	pattern := "list*.txt"
-//
-//	// Use filepath.Glob to find all matching files
-//	files, err := filepath.Glob(filepath.Join(dir, pattern))
-//	if err != nil {
-//		log.Info().Msgf("Error finding files in %s: %v", dir, err)
-//		return
-//	}
-//
-//	// If no files match the pattern, log it and return
-//	if len(files) == 0 {
-//		log.Info().Msgf("No files matching pattern %s found in directory %s", pattern, dir)
-//		return
-//	}
-//
-//	s.userKeys = make(map[string]bool)
-//
-//	// Iterate over each file
-//	for _, file := range files {
-//		// Open the file for reading
-//		f, err := os.Open(file)
-//		if err != nil {
-//			log.Error().Msgf("Error opening file %s: %v", file, err)
-//			continue
-//		}
-//		defer f.Close()
-//
-//		// Use bufio.Scanner to read the file line by line
-//		scanner := bufio.NewScanner(f)
-//		for scanner.Scan() {
-//			// Each line is an API key, add it to UserKeys
-//			apiKey := strings.TrimSpace(scanner.Text())
-//			if apiKey != "" {
-//				s.userKeys[apiKey] = true
-//			}
-//		}
-//
-//		// Log any scanning errors (such as malformed input)
-//		if err := scanner.Err(); err != nil {
-//			log.Error().Msgf("Error reading file %s: %v", file, err)
-//		}
-//	}
-//
-//	log.Info().Msgf("Loaded %d user keys", len(s.userKeys))
-//}
-
 func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey string) (error, int) {
 	//this is really just a best effort to create some kind of locking mechanism with gcs in the absence of anything stateful
 	//because i dont want to pay for a "real" solution (eg hosted database record locking or smth)
@@ -513,6 +457,7 @@ func (s *pdfInspectorServer) GetExpectedResponseJsonSchemaHandler(w http.Respons
 func (s *pdfInspectorServer) GetAPIToken(w http.ResponseWriter, r *http.Request) {
 	log.Info().Msg("here in getAPItoken")
 	if s.config.FrontendClientID == "" {
+		//because if this is blank and then we just try to validate against a blank audience then it will accept any token i think regardless of audience or where it came from.
 		http.Error(w, "Error: Misconfigured server", http.StatusInternalServerError)
 		return
 	}
@@ -522,7 +467,7 @@ func (s *pdfInspectorServer) GetAPIToken(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
-	log.Info().Msgf("wat '%s'", s.config.FrontendClientID)
+
 	payload, err := idtoken.Validate(r.Context(), credential, s.config.FrontendClientID)
 	if err != nil {
 		http.Error(w, "Invalid ID token", http.StatusUnauthorized)
