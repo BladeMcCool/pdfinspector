@@ -28,6 +28,7 @@ type ServiceConfig struct {
 	AdminKey          string
 	UserCreditDeduct  int
 	LogLevel          int
+	FrontendClientID  string
 }
 
 func InitLogging() int {
@@ -66,6 +67,7 @@ func GetServiceConfig(logLevel int) *ServiceConfig {
 		AdminKey:         getConfig(nil, "ADMIN_KEY", ""),
 		UserCreditDeduct: getConfigInt(nil, "USER_CREDIT_DEDUCT", 1),
 		LogLevel:         logLevel,
+		FrontendClientID: getConfig(nil, "FRONTEND_SSO_CLIENT_ID", ""),
 	}
 
 	//Validation

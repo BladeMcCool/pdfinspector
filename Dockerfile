@@ -51,7 +51,7 @@ WORKDIR /app
 
 # Copy the compiled Go binary from the builder stage
 COPY --from=builder /app/pdfinspector /app/pdfinspector
-COPY --from=builder /app/users /app/users
+#COPY --from=builder /app/users /app/users
 COPY --from=builder /app/response_templates /app/response_templates
 
 # Expose the necessary port (if your app serves HTTP requests)

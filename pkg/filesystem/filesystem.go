@@ -13,7 +13,7 @@ import (
 type FileSystem interface {
 	WriteFile(filename string, data []byte) error
 	Writer(filename string) (io.Writer, error)
-	ReadFile(filename string) ([]byte, error)
+	ReadFile(ctx context.Context, filename string) ([]byte, error)
 }
 
 // LocalFileSystem implements FileSystem interface for local file operations.
@@ -36,7 +36,7 @@ func (lfs *LocalFileSystem) Writer(filename string) (io.Writer, error) {
 	}
 	return file, nil
 }
-func (lfs *LocalFileSystem) ReadFile(filename string) ([]byte, error) {
+func (lfs *LocalFileSystem) ReadFile(_ context.Context, filename string) ([]byte, error) {
 	filePath := filepath.Join(lfs.BasePath, filename)
 	fileData, err := os.ReadFile(filePath)
 	if err != nil {
@@ -77,8 +77,8 @@ func (gcs *GCSFileSystem) Writer(filename string) (io.Writer, error) {
 	return writer, nil
 }
 
-func (gcs *GCSFileSystem) ReadFile(filename string) ([]byte, error) {
-	ctx := context.Background()
+func (gcs *GCSFileSystem) ReadFile(ctx context.Context, filename string) ([]byte, error) {
+	//ctx := context.Background()
 	rc, err := gcs.Client.Bucket(gcs.BucketName).Object(filename).NewReader(ctx)
 	if err != nil {
 		return nil, err
