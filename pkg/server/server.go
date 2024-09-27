@@ -625,15 +625,27 @@ func (s *pdfInspectorServer) GetUserGenIDsHandler(w http.ResponseWriter, r *http
 	}
 
 	// Call the function to list objects under the user's gen path
-	objectNames, err := s.ListObjectsWithPrefix(r.Context(), userID)
+	objectInfos, err := s.ListObjectsWithPrefix(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "Failed to list objects: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	//todo sort them.
+	sorted, err := sortAndSerializeGenerations(objectInfos)
+	if err != nil {
+		http.Error(w, "Failed to sort/serialize objects: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	// Respond with the list of object names in JSON format
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(objectNames); err != nil {
-		http.Error(w, "Failed to encode response: "+err.Error(), http.StatusInternalServerError)
+	_, err = w.Write([]byte(sorted))
+	if err != nil {
+		http.Error(w, "Failed to write output to client: "+err.Error(), http.StatusInternalServerError)
 	}
+
+	//if err := json.NewEncoder(w).Encode(objectInfos); err != nil {
+	//	http.Error(w, "Failed to encode response: "+err.Error(), http.StatusInternalServerError)
+	//}
 }

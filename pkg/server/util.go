@@ -3,11 +3,13 @@ package server
 import (
 	"cloud.google.com/go/storage"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/golang-jwt/jwt/v4"
 	"google.golang.org/api/iterator"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -80,8 +82,13 @@ func (s *pdfInspectorServer) extractBearerToken(r *http.Request) (string, error)
 	return tokenParts[1], nil
 }
 
+type generationInfo struct {
+	Name    string
+	Created time.Time
+}
+
 // ListObjectsWithPrefix lists all objects under the given prefix in a GCS bucket.
-func (s *pdfInspectorServer) ListObjectsWithPrefix(ctx context.Context, userId string) ([]string, error) {
+func (s *pdfInspectorServer) ListObjectsWithPrefix(ctx context.Context, userId string) ([]generationInfo, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
@@ -95,7 +102,7 @@ func (s *pdfInspectorServer) ListObjectsWithPrefix(ctx context.Context, userId s
 	query := &storage.Query{Prefix: prefix}
 	it := bucket.Objects(ctx, query)
 
-	var genIds []string
+	var genIds []generationInfo
 	for {
 		objAttr, err := it.Next()
 		if errors.Is(err, iterator.Done) {
@@ -108,7 +115,43 @@ func (s *pdfInspectorServer) ListObjectsWithPrefix(ctx context.Context, userId s
 		// Append the object name to the slice
 		// Extract the genId by stripping the prefix
 		genId := strings.TrimPrefix(objAttr.Name, prefix)
-		genIds = append(genIds, genId)
+		genIds = append(genIds, generationInfo{
+			Name:    genId,
+			Created: objAttr.Created,
+		})
 	}
 	return genIds, nil
+}
+
+// Custom JSON struct to format the date as yyyy-mm-dd hh:mm
+type generationInfoFormatted struct {
+	Name    string `json:"name"`
+	Created string `json:"created"`
+}
+
+// Sort by date descending and serialize to JSON with custom date format
+func sortAndSerializeGenerations(generations []generationInfo) (string, error) {
+	// Sort the slice by Created in descending order
+	sort.Slice(generations, func(i, j int) bool {
+		return generations[i].Created.After(generations[j].Created)
+	})
+
+	// Create a new slice for the formatted results
+	var formattedGenerations []generationInfoFormatted
+
+	// Format the Created time and copy the data to the formatted slice
+	for _, gen := range generations {
+		formattedGenerations = append(formattedGenerations, generationInfoFormatted{
+			Name:    gen.Name,
+			Created: gen.Created.Format("2006-01-02 15:04"), // Custom date format yyyy-mm-dd hh:mm
+		})
+	}
+
+	// Serialize to JSON
+	jsonData, err := json.Marshal(formattedGenerations)
+	if err != nil {
+		return "", fmt.Errorf("failed to serialize to JSON: %w", err)
+	}
+
+	return string(jsonData), nil
 }
