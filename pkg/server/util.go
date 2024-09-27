@@ -14,6 +14,17 @@ import (
 	"time"
 )
 
+type generationInfo struct {
+	Name    string
+	Created time.Time
+}
+
+// Custom JSON struct to format the date as yyyy-mm-dd hh:mm
+type generationInfoFormatted struct {
+	Name    string `json:"name"`
+	Created string `json:"created"`
+}
+
 // CreateCustomToken creates a JWT with 'sub' and 'apikey'
 func (s *pdfInspectorServer) CreateCustomToken(sub, apiKey string) (string, error) {
 	// Define the custom claims to include in the JWT
@@ -82,11 +93,6 @@ func (s *pdfInspectorServer) extractBearerToken(r *http.Request) (string, error)
 	return tokenParts[1], nil
 }
 
-type generationInfo struct {
-	Name    string
-	Created time.Time
-}
-
 // ListObjectsWithPrefix lists all objects under the given prefix in a GCS bucket.
 func (s *pdfInspectorServer) ListObjectsWithPrefix(ctx context.Context, userId string) ([]generationInfo, error) {
 	client, err := storage.NewClient(ctx)
@@ -121,12 +127,6 @@ func (s *pdfInspectorServer) ListObjectsWithPrefix(ctx context.Context, userId s
 		})
 	}
 	return genIds, nil
-}
-
-// Custom JSON struct to format the date as yyyy-mm-dd hh:mm
-type generationInfoFormatted struct {
-	Name    string `json:"name"`
-	Created string `json:"created"`
 }
 
 // Sort by date descending and serialize to JSON with custom date format

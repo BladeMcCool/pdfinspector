@@ -16,7 +16,6 @@ func (s *pdfInspectorServer) SSOUserDetectionMiddleware(next http.Handler) http.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.config.FrontendClientID == "" {
 			//because if this is blank and then we just try to validate against a blank audience then it will accept any token i think regardless of audience or where it came from.
-			//http.Error(w, "Error: Misconfigured server", http.StatusInternalServerError)
 			log.Warn().Msgf("server was not configured with config.FrontendClientID, so we can't set the audience to restrict token validation.")
 			next.ServeHTTP(w, r)
 			return
@@ -25,7 +24,6 @@ func (s *pdfInspectorServer) SSOUserDetectionMiddleware(next http.Handler) http.
 		credential := r.Header.Get("X-Credential")
 		if credential == "" {
 			//just means it wasnt provided. its only really needed for getting apikey anyway.
-			//http.Error(w, "Bad Request", http.StatusBadRequest)
 			next.ServeHTTP(w, r)
 			return
 		}

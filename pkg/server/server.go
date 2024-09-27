@@ -82,9 +82,6 @@ func (s *pdfInspectorServer) initRoutes() {
 	//router
 	router.Get("/getusergenids", s.GetUserGenIDsHandler)
 
-	//router.Post("/authcodetest", s.authcodetest)
-	//router.Post("/tokentest", s.tokentest)
-
 	// Define gated routes
 	router.Group(func(protected chi.Router) {
 		protected.Use(s.AuthMiddleware)
@@ -366,122 +363,11 @@ func (s *pdfInspectorServer) GetExpectedResponseJsonSchemaHandler(w http.Respons
 	}
 }
 
-//
-//// Request body for exchanging code or token
-//type AuthRequest struct {
-//	Code  string `json:"code,omitempty"`
-//	Token string `json:"access_token,omitempty"`
-//}
-//
-//// Response for sending user data back to the client
-//type AuthResponse struct {
-//	Sub string `json:"sub"`
-//}
-
-//// GetAPIToken handles the verification of the Google ID token sent from the client.
-//func (s *pdfInspectorServer) authcodetest(w http.ResponseWriter, r *http.Request) {
-//	log.Info().Msg("here in authcodetest")
-//
-//	googleConfig := &oauth2.Config{
-//		ClientID:     s.config.FrontendClientID,
-//		ClientSecret: s.config.FrontendClientSecret,
-//		RedirectURL:  "http://localhost:3003",
-//		Scopes:       []string{"openid", "profile", "email"},
-//		Endpoint:     google.Endpoint,
-//	}
-//	log.Info().Msgf("here in authcodetest, the googleConfig looks like: %#v", googleConfig)
-//
-//	var authReq AuthRequest
-//	if err := json.NewDecoder(r.Body).Decode(&authReq); err != nil {
-//		http.Error(w, "invalid request", http.StatusBadRequest)
-//		return
-//	}
-//	log.Info().Msgf("here in authcodetest, the authReq looks like: %#v", authReq)
-//
-//	// Exchange authorization code for tokens
-//	token, err := googleConfig.Exchange(context.Background(), authReq.Code)
-//	if err != nil {
-//		http.Error(w, fmt.Sprintf("token exchange failed: %v", err), http.StatusInternalServerError)
-//		return
-//	}
-//	log.Info().Msgf("got this token result: %#v", token)
-//
-//	// Verify and parse the ID token to extract user info
-//	idToken := token.Extra("id_token").(string)
-//	userInfo, err := verifyIDToken(s.config.FrontendClientID, idToken)
-//	if err != nil {
-//		http.Error(w, fmt.Sprintf("ID token verification failed: %v", err), http.StatusInternalServerError)
-//		return
-//	}
-//	log.Info().Msgf("authcodetest got this: %#v", userInfo)
-//	//json.NewEncoder(w).Encode(AuthResponse{Sub: userInfo.Sub})
-//}
-//
-//func (s *pdfInspectorServer) tokentest(w http.ResponseWriter, r *http.Request) {
-//	log.Info().Msg("here in tokentest")
-//
-//	var authReq AuthRequest
-//	if err := json.NewDecoder(r.Body).Decode(&authReq); err != nil {
-//		http.Error(w, "invalid request", http.StatusBadRequest)
-//		return
-//	}
-//
-//	log.Info().Msgf("here in tokentest, the authReq looks like: %#v", authReq)
-//
-//	// Verify the token sent from the client
-//	userInfo, err := verifyIDToken(s.config.FrontendClientID, authReq.Token)
-//	if err != nil {
-//		http.Error(w, fmt.Sprintf("token verification failed: %v", err), http.StatusInternalServerError)
-//		return
-//	}
-//
-//	log.Info().Msgf("tokentest got this: %#v", userInfo)
-//	//json.NewEncoder(w).Encode(AuthResponse{Sub: userInfo.Sub})
-//}
-//
-//// Helper function to verify the ID token and extract user information
-//func verifyIDToken(clientID, idToken string) (*idtoken.Payload, error) {
-//	// Verify the ID token with Google's verification API
-//	payload, err := idtoken.Validate(context.Background(), idToken, clientID)
-//	if err != nil {
-//		return nil, err
-//	}
-//
-//	return payload, nil
-//}
-//
-////////////////////////////////////////////////
-
 // TODO rename this stuff to apikey
 // GetAPIToken handles the verification of the Google ID token sent from the client.
 func (s *pdfInspectorServer) GetAPIToken(w http.ResponseWriter, r *http.Request) {
 	log.Info().Msg("here in getAPItoken")
-	//if s.config.FrontendClientID == "" {
-	//	//because if this is blank and then we just try to validate against a blank audience then it will accept any token i think regardless of audience or where it came from.
-	//	http.Error(w, "Error: Misconfigured server", http.StatusInternalServerError)
-	//	return
-	//}
-	//
-	//credential := r.Header.Get("X-Credential")
-	//if credential == "" {
-	//	http.Error(w, "Bad Request", http.StatusBadRequest)
-	//	return
-	//}
-	//
-	//payload, err := idtoken.Validate(r.Context(), credential, s.config.FrontendClientID)
-	//if err != nil {
-	//	http.Error(w, "Invalid ID token", http.StatusUnauthorized)
-	//	return
-	//}
-	//
-	//// Step 3: Extract user identifier (e.g., email, sub) from the payload
-	//userID := payload.Subject // The unique user ID (sub claim)
-	//email, ok := payload.Claims["email"].(string)
-	//log.Info().Msgf("we thinks %s just logged in, %#v", userID, payload)
-	//if !ok || email == "" {
-	//	http.Error(w, "Email not found in token", http.StatusUnauthorized)
-	//	return
-	//}
+
 	userID, _ := r.Context().Value("ssoSubject").(string)
 	if userID == "" {
 		log.Trace().Msg("ssoSubject/userID was empty?")
@@ -496,9 +382,7 @@ func (s *pdfInspectorServer) GetAPIToken(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Step 5: Return the API key as a JSON response
-	//w.Header().Set("Content-Type", "text/plain")
-	//w.Write([]byte(apiKey))
-	apiKeyOwnership, err := s.CreateCustomToken(userID, apiKey) //this is really about being able to verify claims that a apikey is making a generation for a sso sub id, so that we can record the generation there. i dont want to just trust the user and i dont want to deal with google sso oauth2 refresh token management and shit just to be able ot validate the sso credential (which expires after 1 hour in the simple auth mode where we just get a signed id token from google api) so we can't rely on that being still 'valid'. however, if we roll our own at a time when we know the sso credential is valid to associate that apikey with that sso sub id, then i think it serves the purpose. thanks for reading!
+	apiKeyOwnership, err := s.CreateCustomToken(userID, apiKey) //this is really about being able to verify claims that a apikey is making a generation for a sso sub id, so that we can record the generation there. i dont want to just trust the user and i dont want to deal with google sso oauth2 refresh token management and shit just to be able to validate the sso credential (which expires after 1 hour in the simple auth mode where we just get a signed id token from google api) so we can't rely on that being still 'valid'. however, if we roll our own at a time when we know the sso credential is valid to associate that apikey with that sso sub id, then i think it serves the purpose. thanks for reading!
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
