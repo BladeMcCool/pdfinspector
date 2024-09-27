@@ -79,7 +79,6 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Get("/joboutput/*", s.jobOutputHandler) // Get the output
 	router.Get("/schema/{layout}", s.GetExpectedResponseJsonSchemaHandler)
 	router.Get("/getapitoken", s.GetAPIToken)
-	//router
 	router.Get("/getusergenids", s.GetUserGenIDsHandler)
 
 	// Define gated routes
@@ -528,8 +527,4 @@ func (s *pdfInspectorServer) GetUserGenIDsHandler(w http.ResponseWriter, r *http
 	if err != nil {
 		http.Error(w, "Failed to write output to client: "+err.Error(), http.StatusInternalServerError)
 	}
-
-	//if err := json.NewEncoder(w).Encode(objectInfos); err != nil {
-	//	http.Error(w, "Failed to encode response: "+err.Error(), http.StatusInternalServerError)
-	//}
 }
