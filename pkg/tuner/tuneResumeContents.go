@@ -292,6 +292,12 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 		}
 	}
 
+	if job.UserID != "" {
+		genObjPath := fmt.Sprintf("sso/%s/gen/%s", job.UserID, job.Id)
+		job.Log().Info().Msgf("should note sso ownership at %s", genObjPath)
+		fs.WriteFile(genObjPath, []byte{})
+	}
+
 	job.Log().Info().Msgf("saveBestAttemptToGCS believed to be complete - bestAttemptIndex was %d", bestAttemptIndex)
 	SendJobUpdate(updates, fmt.Sprintf("wrote %d bytes to GCS, download PDF via: %s/joboutput/%s/%s", bytesCount, config.ServiceUrl, job.Id, copyToFilename))
 	return nil

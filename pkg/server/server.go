@@ -10,7 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/rs/zerolog/log"
-	"google.golang.org/api/idtoken"
+
 	"io"
 	"math"
 	"mime"
@@ -71,16 +71,20 @@ func (s *pdfInspectorServer) initRoutes() {
 		MaxAge: 300,
 	}))
 
+	router.Use(s.SSOUserDetectionMiddleware)
+
 	// Define open routes
 	router.Get("/", s.rootHandler)                 // Root handler
 	router.Get("/health", s.healthHandler)         // Health check handler
 	router.Get("/joboutput/*", s.jobOutputHandler) // Get the output
 	router.Get("/schema/{layout}", s.GetExpectedResponseJsonSchemaHandler)
 	router.Get("/getapitoken", s.GetAPIToken)
+	router.Get("/getusergenids", s.GetUserGenIDsHandler)
 
 	// Define gated routes
 	router.Group(func(protected chi.Router) {
 		protected.Use(s.AuthMiddleware)
+		protected.Get("/claimapitoken", s.claimAPIToken)
 		protected.Post("/streamjob", s.streamJobHandler) // Keep the connection open while running the job and streaming updates
 	})
 
@@ -124,8 +128,6 @@ func (s *pdfInspectorServer) healthHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Request) {
-	log.Trace().Msg("here in streamJobHandler")
-
 	var inputJob job.Job
 	if err := json.NewDecoder(r.Body).Decode(&inputJob); err != nil {
 		http.Error(w, "Invalid JSON input", http.StatusBadRequest)
@@ -140,7 +142,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 		err := inputJob.ValidateForNonAdmin()
 		if err != nil {
 			log.Error().Msgf("invalid inputJob %v", err)
-			http.Error(w, "Bad Reqeust: invalid inputJob", http.StatusBadRequest)
+			http.Error(w, "Bad Request: invalid inputJob", http.StatusBadRequest)
 			return
 		}
 		userKey, _ := r.Context().Value("userKey").(string)
@@ -151,6 +153,10 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 			return
 		}
 		inputJob.UserKey = userKey
+
+		userID, _ := r.Context().Value("ssoSubject").(string)
+		inputJob.UserID = userID
+		log.Trace().Msgf("streamJobHandler: sso subject userId believed to be %s", inputJob.UserID)
 	}
 
 	// Set headers for streaming response
@@ -272,103 +278,6 @@ func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Req
 	}
 }
 
-// AuthMiddleware is the middleware that checks for a valid Bearer token and session information in GCS.
-func (s *pdfInspectorServer) AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Extract the Authorization header
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Unauthorized: No authorization header provided", http.StatusUnauthorized)
-			return
-		}
-
-		// Expect a Bearer token
-		tokenParts := strings.Split(authHeader, " ")
-		if len(tokenParts) != 2 || strings.ToLower(tokenParts[0]) != "bearer" {
-			http.Error(w, "Unauthorized: Malformed authorization header", http.StatusUnauthorized)
-			return
-		}
-
-		bearerToken := tokenParts[1]
-
-		// Check if the bearer token matches the AdminKey in the config
-		if bearerToken == s.config.AdminKey {
-			// Allow the request through if it's an admin token
-			// Set the admin flag in the context
-			ctx := context.WithValue(r.Context(), "isAdmin", true)
-
-			// Create a new request with the updated context
-			r = r.WithContext(ctx)
-
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		knownApiKey, err := s.checkApiKeyExists(r.Context(), bearerToken)
-		if err != nil || knownApiKey == false {
-			// If the token is not a known user, deny access
-			http.Error(w, "Unauthorized: Unknown user token", http.StatusUnauthorized)
-			return
-		}
-
-		// If everything is valid, proceed to the next handler
-		ctx := context.WithValue(r.Context(), "userKey", bearerToken)
-
-		// Create a new request with the updated context
-		r = r.WithContext(ctx)
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-// Method to check if an API key exists using GCS and cache results.
-func (s *pdfInspectorServer) checkApiKeyExists(ctx context.Context, apiKey string) (bool, error) {
-	// 1. First, check the map (knownUsers) for the API key.
-	s.userKeysMu.RLock()
-	actualApiKey, hasRecordOfChecking := s.userKeys[apiKey]
-	s.userKeysMu.RUnlock()
-
-	// If the API key is found in the cache, return the cached result.
-	if hasRecordOfChecking {
-		return actualApiKey, nil
-	}
-
-	// 2. If the API key is not found in the cache, check GCS.
-	// First, check if s.jobRunner.Tuner.Fs is a GcpFilesystem.
-	gcpFs, ok := s.jobRunner.Tuner.Fs.(*filesystem.GCSFileSystem)
-	if !ok {
-		return false, fmt.Errorf("file system is not GCSFileSystem")
-	}
-
-	// Use the GCS client to check for the file's existence.
-	client := gcpFs.Client
-	bucketName := s.config.GcsBucket
-	objectName := fmt.Sprintf("users/%s/credit", apiKey) // Assuming the API keys are stored in a "keys" folder
-
-	// 3. Check if the API key file exists in GCS.
-	bucket := client.Bucket(bucketName)
-	obj := bucket.Object(objectName)
-
-	_, err := obj.Attrs(ctx)
-	if errors.Is(err, storage.ErrObjectNotExist) {
-		// The API key file does not exist, cache the result as false.
-		log.Info().Msgf("Discovered and cached the fact that api key %s does _not_ exist.", apiKey)
-		s.userKeysMu.Lock()
-		s.userKeys[apiKey] = false
-		s.userKeysMu.Unlock()
-		return false, nil
-	} else if err != nil {
-		// Some other error occurred.
-		return false, fmt.Errorf("error checking API key in GCS: %v", err)
-	}
-	log.Info().Msgf("Discovered and cached the fact that api key %s exists.", apiKey)
-	// 4. If the file exists, cache the result as true.
-	s.userKeysMu.Lock()
-	s.userKeys[apiKey] = true
-	s.userKeysMu.Unlock()
-	return true, nil
-}
-
 func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey string) (error, int) {
 	//this is really just a best effort to create some kind of locking mechanism with gcs in the absence of anything stateful
 	//because i dont want to pay for a "real" solution (eg hosted database record locking or smth)
@@ -453,62 +362,75 @@ func (s *pdfInspectorServer) GetExpectedResponseJsonSchemaHandler(w http.Respons
 	}
 }
 
+// TODO rename this stuff to apikey
 // GetAPIToken handles the verification of the Google ID token sent from the client.
 func (s *pdfInspectorServer) GetAPIToken(w http.ResponseWriter, r *http.Request) {
 	log.Info().Msg("here in getAPItoken")
-	if s.config.FrontendClientID == "" {
-		//because if this is blank and then we just try to validate against a blank audience then it will accept any token i think regardless of audience or where it came from.
-		http.Error(w, "Error: Misconfigured server", http.StatusInternalServerError)
-		return
-	}
 
-	credential := r.Header.Get("X-Credential")
-	if credential == "" {
+	userID, _ := r.Context().Value("ssoSubject").(string)
+	if userID == "" {
+		log.Trace().Msg("ssoSubject/userID was empty?")
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
 
-	payload, err := idtoken.Validate(r.Context(), credential, s.config.FrontendClientID)
-	if err != nil {
-		http.Error(w, "Invalid ID token", http.StatusUnauthorized)
-		return
-	}
-
-	// Step 3: Extract user identifier (e.g., email, sub) from the payload
-	userID := payload.Subject // The unique user ID (sub claim)
-	email, ok := payload.Claims["email"].(string)
-	log.Info().Msgf("we thinks %s just logged in, %#v", userID, payload)
-	if !ok || email == "" {
-		http.Error(w, "Email not found in token", http.StatusUnauthorized)
-		return
-	}
-
-	apiKey, err := s.GetBestApiKeyForUser(r.Context(), userID)
+	apiKey, totalCredits, err := s.GetBestApiKeyForUser(r.Context(), userID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Could not determine best APIKey: %s", err.Error()), http.StatusUnauthorized)
+		return
 	}
 
 	// Step 5: Return the API key as a JSON response
-	w.Header().Set("Content-Type", "text/plain")
-	//response := map[string]string{"apiKey": apiKey}
-	//json.NewEncoder(w).Encode(response)
-	w.Write([]byte(apiKey))
+	apiKeyOwnership, err := s.CreateCustomToken(userID, apiKey) //this is really about being able to verify claims that a apikey is making a generation for a sso sub id, so that we can record the generation there. i dont want to just trust the user and i dont want to deal with google sso oauth2 refresh token management and shit just to be able to validate the sso credential (which expires after 1 hour in the simple auth mode where we just get a signed id token from google api) so we can't rely on that being still 'valid'. however, if we roll our own at a time when we know the sso credential is valid to associate that apikey with that sso sub id, then i think it serves the purpose. thanks for reading!
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]interface{}{
+		"apiKey":          apiKey,
+		"totalCredits":    totalCredits,
+		"apiKeyOwnership": apiKeyOwnership,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *pdfInspectorServer) claimAPIToken(w http.ResponseWriter, r *http.Request) {
+	//the only real point of this one is to cover the edge case where a signed in person wants to use a custom apikey to do a generation that they'd like to be able to recall later.
+	userKey, _ := r.Context().Value("userKey").(string)
+	ssoSubject, _ := r.Context().Value("ssoSubject").(string)
+	log.Trace().Msgf("here in claimAPIToken with %s and %s", userKey, ssoSubject)
+
+	apiKeyOwnership, err := s.CreateCustomToken(ssoSubject, userKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]interface{}{
+		"apiKeyOwnership": apiKeyOwnership,
+	}
+	json.NewEncoder(w).Encode(response)
 }
 
 // GetBestApiKeyForUser retrieves the best API key for a user based on the least positive remaining credits.
-func (s *pdfInspectorServer) GetBestApiKeyForUser(ctx context.Context, userID string) (string, error) {
+func (s *pdfInspectorServer) GetBestApiKeyForUser(ctx context.Context, userID string) (string, int, error) {
+	// this is all cheese because i'm using GCS as a database.
+
 	// Step 1: Read the API keys for the user
 	apiKeys, err := s.ReadApiKeysForUser(ctx, userID)
 	if err != nil {
-		return "", fmt.Errorf("failed to read API keys for user %s: %w", userID, err)
+		return "", 0, fmt.Errorf("failed to read API keys for user %s: %w", userID, err)
 	}
 	if len(apiKeys) == 0 {
-		return "", fmt.Errorf("no API keys found for user %s", userID)
+		return "", 0, fmt.Errorf("no API keys found for user %s", userID)
 	}
 
 	// Step 2: For each API key, get the credit and find the one with the least positive credits
 	var bestApiKey string
 	minCredits := math.MaxInt64 // Initialize to maximum int value
+	totalCredits := 0
 	for _, apiKey := range apiKeys {
 		credits, err := s.GetCreditsForApiKey(ctx, apiKey)
 		if err != nil {
@@ -519,6 +441,7 @@ func (s *pdfInspectorServer) GetBestApiKeyForUser(ctx context.Context, userID st
 			log.Printf("API key %s has zero or negative credits (%d), skipping", apiKey, credits)
 			continue
 		}
+		totalCredits += credits
 		if credits < minCredits {
 			minCredits = credits
 			bestApiKey = apiKey
@@ -526,12 +449,12 @@ func (s *pdfInspectorServer) GetBestApiKeyForUser(ctx context.Context, userID st
 	}
 
 	if bestApiKey == "" {
-		return "", fmt.Errorf("no API keys with positive credits found for user %s", userID)
+		return "", 0, fmt.Errorf("no API keys with positive credits found for user %s", userID)
 	}
 
 	// Return the best API key
 	log.Printf("Selected API key %s with %d credits for user %s", bestApiKey, minCredits, userID)
-	return bestApiKey, nil
+	return bestApiKey, totalCredits, nil
 }
 
 // ReadApiKeysForUser reads the API keys for a user from GCS.
@@ -574,4 +497,34 @@ func (s *pdfInspectorServer) GetCreditsForApiKey(ctx context.Context, apiKey str
 		return 0, fmt.Errorf("invalid credit value for API key %s: %w", apiKey, err)
 	}
 	return credits, nil
+}
+
+func (s *pdfInspectorServer) GetUserGenIDsHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract the userId from the request context - it would have come from ripping into credential header of one sort or another.
+	userID, ok := r.Context().Value("ssoSubject").(string)
+	if !ok || userID == "" {
+		http.Error(w, "userId is required", http.StatusBadRequest)
+		return
+	}
+
+	// Call the function to list objects under the user's gen path
+	objectInfos, err := s.ListObjectsWithPrefix(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "Failed to list objects: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	//todo sort them.
+	sorted, err := sortAndSerializeGenerations(objectInfos)
+	if err != nil {
+		http.Error(w, "Failed to sort/serialize objects: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Respond with the list of object names in JSON format
+	w.Header().Set("Content-Type", "application/json")
+	_, err = w.Write([]byte(sorted))
+	if err != nil {
+		http.Error(w, "Failed to write output to client: "+err.Error(), http.StatusInternalServerError)
+	}
 }

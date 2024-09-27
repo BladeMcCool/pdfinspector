@@ -47,6 +47,7 @@ type Job struct {
 	//idk but i want to report to the user their balance and i dont really want to make a whole new struct for it
 	UserKey             string
 	UserCreditRemaining int
+	UserID              string //like sso subject id, so we can put generation ids into a bucket path for them to recall later.
 
 	//
 	Logger *zerolog.Logger

@@ -14,21 +14,23 @@ import (
 
 // ServiceConfig struct to hold the configuration values
 type ServiceConfig struct {
-	GotenbergURL      string
-	JsonServerURL     string
-	ReactAppURL       string
-	FsType            string
-	Mode              string
-	LocalPath         string
-	GcsBucket         string
-	OpenAiApiKey      string //oh noes the capitalization *hand waving* guess what? idgaf :) my way.
-	ServiceUrl        string
-	UseSystemGs       bool //in the deployed environment we will bake a gs into the image that runs this part, so we can just use a 'gs' command locally.
-	ServiceListenPort string
-	AdminKey          string
-	UserCreditDeduct  int
-	LogLevel          int
-	FrontendClientID  string
+	GotenbergURL         string
+	JsonServerURL        string
+	ReactAppURL          string
+	FsType               string
+	Mode                 string
+	LocalPath            string
+	GcsBucket            string
+	OpenAiApiKey         string //oh noes the capitalization *hand waving* guess what? idgaf :) my way.
+	ServiceUrl           string
+	UseSystemGs          bool //in the deployed environment we will bake a gs into the image that runs this part, so we can just use a 'gs' command locally.
+	ServiceListenPort    string
+	AdminKey             string
+	UserCreditDeduct     int
+	LogLevel             int
+	FrontendClientID     string
+	FrontendClientSecret string
+	JwtSecret            string
 }
 
 func InitLogging() int {
@@ -55,19 +57,21 @@ func GetServiceConfig(logLevel int) *ServiceConfig {
 
 	// Populate the serviceConfig struct
 	config := &ServiceConfig{
-		GotenbergURL:     getConfig(gotenbergURL, "GOTENBERG_URL", "http://localhost:80"),
-		JsonServerURL:    getConfig(jsonServerURL, "JSON_SERVER_URL", "http://localhost:3002"),
-		ReactAppURL:      getConfig(reactAppURL, "REACT_APP_URL", "http://host.docker.internal:3000"),
-		OpenAiApiKey:     getConfig(openAiApiKey, "OPENAI_API_KEY", ""),
-		FsType:           getConfig(fstype, "FSTYPE", "local"),
-		GcsBucket:        getConfig(gcsBucket, "GCS_BUCKET", "my-stinky-bucket"),
-		LocalPath:        getConfig(localPath, "LOCAL_PATH", "outputs"),
-		Mode:             getConfig(mode, "MODE", "server"), // Default to "server"
-		UseSystemGs:      getConfigBool(useSystemGs, "USE_SYSTEM_GS", false),
-		AdminKey:         getConfig(nil, "ADMIN_KEY", ""),
-		UserCreditDeduct: getConfigInt(nil, "USER_CREDIT_DEDUCT", 1),
-		LogLevel:         logLevel,
-		FrontendClientID: getConfig(nil, "FRONTEND_SSO_CLIENT_ID", ""),
+		GotenbergURL:         getConfig(gotenbergURL, "GOTENBERG_URL", "http://localhost:80"),
+		JsonServerURL:        getConfig(jsonServerURL, "JSON_SERVER_URL", "http://localhost:3002"),
+		ReactAppURL:          getConfig(reactAppURL, "REACT_APP_URL", "http://host.docker.internal:3000"),
+		OpenAiApiKey:         getConfig(openAiApiKey, "OPENAI_API_KEY", ""),
+		FsType:               getConfig(fstype, "FSTYPE", "local"),
+		GcsBucket:            getConfig(gcsBucket, "GCS_BUCKET", "my-stinky-bucket"),
+		LocalPath:            getConfig(localPath, "LOCAL_PATH", "outputs"),
+		Mode:                 getConfig(mode, "MODE", "server"), // Default to "server"
+		UseSystemGs:          getConfigBool(useSystemGs, "USE_SYSTEM_GS", false),
+		AdminKey:             getConfig(nil, "ADMIN_KEY", ""),
+		UserCreditDeduct:     getConfigInt(nil, "USER_CREDIT_DEDUCT", 1),
+		LogLevel:             logLevel,
+		FrontendClientID:     getConfig(nil, "FRONTEND_SSO_CLIENT_ID", ""),
+		FrontendClientSecret: getConfig(nil, "FRONTEND_SSO_CLIENT_SECRET", ""),
+		JwtSecret:            getConfig(nil, "JWT_SECRET", ""), //todo make sure this gets put into secrets and set in the deploy.
 	}
 
 	//Validation
