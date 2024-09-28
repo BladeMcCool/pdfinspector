@@ -10,7 +10,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/rs/zerolog/log"
-
 	"io"
 	"math"
 	"mime"
@@ -80,6 +79,8 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Get("/schema/{layout}", s.GetExpectedResponseJsonSchemaHandler)
 	router.Get("/getapitoken", s.GetAPIToken)
 	router.Get("/getusergenids", s.GetUserGenIDsHandler)
+	router.Post("/create-payment-intent", s.handleCreatePaymentIntent)
+	router.Post("/stripe-webhook", s.handleStripeWebhook)
 
 	// Define gated routes
 	router.Group(func(protected chi.Router) {

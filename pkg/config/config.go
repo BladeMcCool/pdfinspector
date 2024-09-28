@@ -31,6 +31,8 @@ type ServiceConfig struct {
 	FrontendClientID     string
 	FrontendClientSecret string
 	JwtSecret            string
+	StripeSecretKey      string
+	StripeWebhookSecret  string
 }
 
 func InitLogging() int {
@@ -71,7 +73,9 @@ func GetServiceConfig(logLevel int) *ServiceConfig {
 		LogLevel:             logLevel,
 		FrontendClientID:     getConfig(nil, "FRONTEND_SSO_CLIENT_ID", ""),
 		FrontendClientSecret: getConfig(nil, "FRONTEND_SSO_CLIENT_SECRET", ""),
-		JwtSecret:            getConfig(nil, "JWT_SECRET", ""), //todo make sure this gets put into secrets and set in the deploy.
+		JwtSecret:            getConfig(nil, "JWT_SECRET", ""),
+		StripeSecretKey:      getConfig(nil, "STRIPE_API_SECRET_KEY", ""), //todo make sure this gets put into secrets and set in the deploy.
+		StripeWebhookSecret:  getConfig(nil, "STRIPE_WEBHOOK_SECRET", ""), //todo make sure this gets put into secrets and set in the deploy.
 	}
 
 	//Validation
