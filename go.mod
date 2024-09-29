@@ -11,6 +11,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/uuid v1.6.0
 	github.com/rs/zerolog v1.33.0
+	github.com/stripe/stripe-go/v79 v79.12.0
 	golang.org/x/oauth2 v0.21.0
 	google.golang.org/api v0.187.0
 )

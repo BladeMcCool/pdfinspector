@@ -53,7 +53,7 @@ var preserveUuids = map[string]bool{
 }
 
 func cleanOutputs(outputsDir, bucketName string, ttl time.Duration, doDelete bool) {
-
+	panic("hey careful we might have customer data now lol. only remove if you're sure!")
 	log.Printf("setting up gcs client ...")
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)

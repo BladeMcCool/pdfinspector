@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/rs/zerolog/log"
+	"github.com/stripe/stripe-go/v79"
 	"os"
 	"path/filepath"
 	"pdfinspector/pkg/config"
@@ -25,6 +26,8 @@ func main() {
 	}
 
 	// Web server mode
+	stripe.Key = config.StripeSecretKey //not sure a better place to do this. this is probably fine.
+	//stripe.Key = ""
 	server := server.NewPdfInspectorServer(config)
 	server.RunServer()
 }
