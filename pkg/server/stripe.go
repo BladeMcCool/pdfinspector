@@ -19,21 +19,7 @@ import (
 	"strings"
 )
 
-//methods for a stripe integration. probably a lot of copypasta from docs/gpt due to laziness.
-//
-//func main() {
-//	// This is your test secret API key.
-//	stripe.Key = "sk_test_51Q2PXFRpCqWuwLGKWCJ4CYDOlW6EWlaawYpVINt8Xaa0HSl49cj1vdEZoLCwixbo1IaI8PbVi95yOADv1hHS4pnD00eal2IIyi"
-//
-//	fs := http.FileServer(http.Dir("public"))
-//	http.Handle("/", fs)
-//	http.HandleFunc("/create-payment-intent", handleCreatePaymentIntent)
-//
-//	addr := "localhost:4242"
-//	log.Info().Msgf("Listening on %s ...", addr)
-//	log.Fatal(http.ListenAndServe(addr, nil))
-//}
-
+// methods for a stripe integration. probably a lot of copypasta from docs/gpt due to laziness.
 type item struct {
 	Id     string
 	Amount int64
@@ -50,11 +36,6 @@ func calculateOrderAmount(items []item) int64 {
 }
 
 func (s *pdfInspectorServer) handleCreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
-	//if r.Method != "POST" {
-	//	http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-	//	return
-	//}
-
 	var req struct {
 		Items []item `json:"items"`
 	}
@@ -84,12 +65,9 @@ func (s *pdfInspectorServer) handleCreatePaymentIntent(w http.ResponseWriter, r 
 	}
 
 	writeJSON(w, struct {
-		ClientSecret   string `json:"clientSecret"`
-		DpmCheckerLink string `json:"dpmCheckerLink"`
+		ClientSecret string `json:"clientSecret"`
 	}{
 		ClientSecret: pi.ClientSecret,
-		// [DEV]: For demo purposes only, you should avoid exposing the PaymentIntent ID in the client-side code.
-		DpmCheckerLink: fmt.Sprintf("https://dashboard.stripe.com/settings/payment_methods/review?transaction_id=%s", pi.ID),
 	})
 }
 
@@ -165,13 +143,12 @@ func (s *pdfInspectorServer) handleStripeWebhook(w http.ResponseWriter, r *http.
 		for lineItems.Next() {
 			// Get the current line item
 			lineItem := lineItems.LineItem()
+			//log.Info().Msgf("Price: %d\n", lineItem.Price.UnitAmount)
 			//log.Info().Msgf("lineitem: %#v", lineItem)
-
 			// Access details for each line item
 			//log.Info().Msgf("Product: %s\n", lineItem.Description)
 			//log.Info().Msgf("Quantity: %d\n", lineItem.Quantity)
 			totalCreditsToIssue += lineItem.Quantity
-			//log.Info().Msgf("Price: %d\n", lineItem.Price.UnitAmount)
 		}
 		//log.Info().Msgf("checkout.session.completed smth: %#v", smth)
 		customerSSOSubject := checkoutSession.ClientReferenceID //todo think about maybe not passing this around in plaintext -- couldnt i send my server signed jwt?

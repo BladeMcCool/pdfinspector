@@ -79,7 +79,7 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Get("/schema/{layout}", s.GetExpectedResponseJsonSchemaHandler)
 	router.Get("/getapitoken", s.GetAPIToken)
 	router.Get("/getusergenids", s.GetUserGenIDsHandler)
-	router.Post("/create-payment-intent", s.handleCreatePaymentIntent)
+	//router.Post("/create-payment-intent", s.handleCreatePaymentIntent)
 	router.Post("/stripe-webhook", s.handleStripeWebhook)
 
 	// Define gated routes
