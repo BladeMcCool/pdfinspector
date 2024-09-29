@@ -31,23 +31,26 @@ You can use real job history and personal info in the nested baseline resume dat
 
 ## Pieces of the Puzzle
 
+### Web Frontend
+https://resdoc.chws.ca is a React based front end with connection to Stripe for payment and allows for resume tuning job submission on a credits system with API keys and Google SSO.
+
 ### OpenAI API with structured output
-We leverage the native JSON output capability of the API with some prompt engineering to iteratively steer the output as desired. Prior to resume adjustment, some metadata about the given job description is garnered via OpenAI. 
+We leverage the native JSON output capability of the API using JSON schema and some prompt engineering to iteratively steer the output as desired. Prior to resume adjustment, some metadata about the given job description is garnered via OpenAI. 
 
 ### JSON Server
-The JSON server is a backend service responsible for providing the resume update attempts as JSON data. It works by retrieving the resume content updates from Google Cloud Storage (GCS), making them available to the React frontend. The frontend fetches this data to present the iterations of the resume to the user, enabling further refinement based on feedback and OpenAI suggestions.
+The JSON server is a backend service responsible for providing the resume update attempts as JSON data. It works by retrieving the resume content updates from Google Cloud Storage (GCS), making them available to the Resume Application. The Resume Application fetches this data to present the iterations of the resume to the PDF renderer, enabling further refinement based on length adjustment requirements.
 
-### Ghostscript
-Ghostscript is used to convert the generated PDF into images for accurate and easy inspection of the document's length. By rendering each page of the PDF as an image, pdfinspector can visually assess whether the resume meets the single-page requirement and adjust accordingly before finalizing the document. This ensures the content remains within the necessary limits without sacrificing readability or formatting.
+### Resume Application
+The Resume Application is used for rendering a personal resume into a PDF, hosted locally or in a container. Will typically obtain resume data for document rendering via the JSON server.
 
 ### Gotenberg
 Gotenberg is an API-driven document conversion service that converts HTML, Markdown, and URLs to PDFs using Chromium. It’s leveraged in `pdfinspector` for PDF generation from web sources.
 
+### Ghostscript
+Ghostscript is used to convert the generated PDF into images for accurate and easy inspection of the document's length. By rendering each page of the PDF as an image, pdfinspector can visually assess whether the resume meets the single-page requirement and adjust accordingly before finalizing the document. This ensures the content remains within the necessary limits without sacrificing readability or formatting.
+
 ### PdfInspector
 Go based project to bring all the pieces together.
-
-### Resume Application
-The Resume Application is used for rendering a personal resume into a PDF, hosted locally on a container.
 
 - **Running the Resume Container**:
     ```bash
