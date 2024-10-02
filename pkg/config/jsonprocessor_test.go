@@ -9,9 +9,6 @@ import (
 	"testing"
 )
 
-// The extractRelevantSchema function is assumed to be defined as previously described.
-// Add the full function definition here if needed for completeness.
-
 func TestExtractRelevantSchema(t *testing.T) {
 	// Input schema with irrelevant fields (like "title", "description", etc.)
 	rawSchema := `

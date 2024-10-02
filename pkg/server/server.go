@@ -346,7 +346,6 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 func (s *pdfInspectorServer) GetJsonSchemaHandler(w http.ResponseWriter, r *http.Request) {
 	layout := chi.URLParam(r, "layout")
 	log.Info().Msgf("here in GetJsonSchemaHandler for %s", layout)
-	//schema, err := s.jobRunner.Tuner.GetExpectedResponseJsonSchema(layout)
 	schema, err := s.jobRunner.Tuner.GetCompleteJsonSchema(layout)
 	if err != nil {
 		http.NotFound(w, r)
