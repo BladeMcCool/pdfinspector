@@ -76,7 +76,7 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Get("/", s.rootHandler)                 // Root handler
 	router.Get("/health", s.healthHandler)         // Health check handler
 	router.Get("/joboutput/*", s.jobOutputHandler) // Get the output
-	router.Get("/schema/{layout}", s.GetExpectedResponseJsonSchemaHandler)
+	router.Get("/schema/{layout}", s.GetJsonSchemaHandler)
 	router.Get("/getapitoken", s.GetAPIToken)
 	router.Get("/getusergenids", s.GetUserGenIDsHandler)
 	//router.Post("/create-payment-intent", s.handleCreatePaymentIntent)
@@ -343,10 +343,10 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 	return nil, newCredit
 }
 
-func (s *pdfInspectorServer) GetExpectedResponseJsonSchemaHandler(w http.ResponseWriter, r *http.Request) {
+func (s *pdfInspectorServer) GetJsonSchemaHandler(w http.ResponseWriter, r *http.Request) {
 	layout := chi.URLParam(r, "layout")
-	log.Info().Msgf("here in GetExpectedResponseJsonSchemaHandler for %s", layout)
-	schema, err := s.jobRunner.Tuner.GetExpectedResponseJsonSchema(layout)
+	log.Info().Msgf("here in GetJsonSchemaHandler for %s", layout)
+	schema, err := s.jobRunner.Tuner.GetCompleteJsonSchema(layout)
 	if err != nil {
 		http.NotFound(w, r)
 		return

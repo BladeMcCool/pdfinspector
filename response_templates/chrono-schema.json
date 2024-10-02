@@ -6,34 +6,42 @@
       "type": "object",
       "properties": {
         "name": {
+          "title": "Full Name",
           "type": "string",
           "description": "The candidate's full name."
         },
         "email": {
+          "title": "Email",
           "type": "string",
           "description": "The candidate's email address."
         },
         "phone": {
+          "title": "Telephone",
           "type": "string",
           "description": "The candidate's phone number."
         },
         "linkedin": {
+          "title": "LinkedIn Profile URL",
           "type": ["string","null"],
           "description": "The candidate's LinkedIn profile URL."
         },
         "location": {
+          "title": "City, State",
           "type": "string",
           "description": "The candidate's city and province/state."
         },
         "github": {
+          "title": "Github URL",
           "type": ["string","null"],
           "description": "The candidate's GitHub profile URL."
         }
       },
       "required": ["name", "email", "phone", "linkedin", "location", "github"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "title": "Personal Info"
     },
     "skills": {
+      "title": "Skills",
       "type": "array",
       "items": {
         "type": "string"
@@ -41,50 +49,46 @@
       "description": "A list of skills the candidate possesses."
     },
     "work_history": {
+      "title": "Work History",
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
           "company": {
+            "title": "Company Name",
             "type": "string",
             "description": "The name of the company."
           },
           "tag": {
+            "title": "Company Shortname",
             "type": "string",
-            "description": "A short tag or label for the company."
-          },
-          "companydesc": {
-            "type": ["string","null"],
-            "description": "A brief description of the company."
+            "description": "A short tag or label for the company. (or leave blank)"
           },
           "location": {
+            "title": "Company Location",
             "type": "string",
             "description": "The location of the company."
           },
           "jobtitle": {
+            "title": "Job Title",
             "type": "string",
             "description": "The job title held at the company."
           },
           "daterange": {
+            "title": "Date Range",
             "type": "string",
             "description": "The date range during which the candidate worked at the company."
           },
-          "sortdate": {
-            "type": "string",
-            "description": "A date used for sorting the work history entries."
-          },
           "projects": {
+            "title": "Projects/Accomplishments at the company",
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
                 "desc": {
+                  "title": "Description",
                   "type": "string",
                   "description": "A description of the project and what was done including a mention of the technologies used."
-                },
-                "sortdate": {
-                  "type": "string",
-                  "description": "A date used for sorting the project entries."
                 },
                 "github": {
                   "type": ["string","null"],
@@ -95,20 +99,22 @@
                   "description": "The location from where the project was completed."
                 },
                 "jobtitle": {
+                  "title": "Job Title",
                   "type": "string",
                   "description": "The job title held while working on the project."
                 }
               },
-              "required": ["desc","sortdate","github","location","jobtitle"],
+              "required": ["desc","github","location","jobtitle"],
               "additionalProperties": false
             }
           }
         },
-        "required": ["company", "tag", "companydesc", "location", "jobtitle", "daterange", "sortdate", "projects"],
+        "required": ["company", "tag", "location", "jobtitle", "daterange", "projects"],
         "additionalProperties": false
       }
     },
     "education_v2": {
+      "title": "Education",
       "type": "array",
       "items": {
         "type": "object",
@@ -134,7 +140,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Relevant notes about the education (maximum of one entry)."
+            "description": "Relevant notes about the education - one entry max is suggested, or leave blank"
           }
         },
         "required": ["institution", "location", "description", "graduated", "notes"],
