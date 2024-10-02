@@ -245,6 +245,23 @@ func (t *Tuner) configureFilesystem() filesystem.FileSystem {
 }
 
 func (t *Tuner) GetExpectedResponseJsonSchema(layout string) (interface{}, error) {
+	completeSchema, err := t.readAndDecodeJsonSchema(layout)
+	if err != nil {
+		return nil, err
+	}
+	stripped := config.ExtractRelevantSchema(completeSchema)
+	return stripped, nil
+}
+
+func (t *Tuner) GetCompleteJsonSchema(layout string) (interface{}, error) {
+	completeSchema, err := t.readAndDecodeJsonSchema(layout)
+	if err != nil {
+		return nil, err
+	}
+	return completeSchema, nil
+}
+
+func (t *Tuner) readAndDecodeJsonSchema(layout string) (interface{}, error) {
 	expectResponseFilePath := filepath.Join("response_templates", fmt.Sprintf("%s-schema.json", layout))
 	// Read expect_response.json
 	expectResponseContent, err := os.ReadFile(expectResponseFilePath)
@@ -258,6 +275,7 @@ func (t *Tuner) GetExpectedResponseJsonSchema(layout string) (interface{}, error
 	}
 	return expectResponseSchema, nil
 }
+
 func (t *Tuner) GetDefaultPrompt(layout string) (string, error) {
 	log.Info().Msgf("No (or empty) prompt from the file system so will use a default one.")
 

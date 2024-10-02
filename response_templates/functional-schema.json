@@ -6,38 +6,47 @@
       "type": "object",
       "properties": {
         "name": {
+          "title": "Full Name",
           "type": "string",
           "description": "The candidate's full name."
         },
         "email": {
+          "title": "Email",
           "type": "string",
           "description": "The candidate's email address."
         },
         "phone": {
+          "title": "Telephone",
           "type": "string",
           "description": "The candidate's phone number."
         },
         "linkedin": {
+          "title": "LinkedIn Profile URL",
           "type": "string",
           "description": "The candidate's LinkedIn profile URL."
         },
         "location": {
+          "title": "City, State",
           "type": "string",
           "description": "The candidate's city and province/state."
         },
         "github": {
+          "title": "Github URL",
           "type": "string",
           "description": "The candidate's GitHub profile URL."
         }
       },
       "required": ["name", "email", "phone", "linkedin","location","github"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "title": "Personal Info"
     },
     "overview": {
+      "title": "Overview",
       "type": "string",
       "description": "A descriptive profile overview text for the candidate."
     },
     "education": {
+      "title": "Education",
       "type": "array",
       "items": {
         "type": "object",
@@ -63,7 +72,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Relevant notes about the education (maximum of one entry)."
+            "description": "Relevant notes about the education - one entry max is suggested, or leave blank"
           }
         },
         "required": ["institution", "location","description", "graduated", "notes"],
@@ -71,28 +80,34 @@
       }
     },
     "functional_areas": {
+      "title": "Functional Areas",
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
           "title": {
+            "title": "Functional Area",
             "type": "string",
             "description": "Title or heading for the functional area of work."
           },
           "key_contributions": {
+            "title": "Key Contributions",
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
                 "description": {
+                  "title": "Description",
                   "type": "string",
                   "description": "Description of the accomplishment."
                 },
                 "lead_in": {
+                  "title": "Lead in",
                   "type": "integer",
                   "description": "A count of the action words to highlight, from the start of the description"
                 },
                 "tech": {
+                  "title": "Technologies",
                   "type": "array",
                   "items": {
                     "type": "string"
@@ -100,10 +115,12 @@
                   "description": "Examples of technologies used in this functional area."
                 },
                 "daterange": {
+                  "title": "Date Range",
                   "type": "string",
                   "description": "The date range during which the work was performed."
                 },
                 "company": {
+                  "title": "Company",
                   "type": "string",
                   "description": "The company where the work was performed."
                 }
