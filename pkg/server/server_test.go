@@ -168,7 +168,8 @@ func TestGetBestApiKeyForUser(t *testing.T) {
 			}
 
 			// Call the function under test
-			apiKey, err := server.GetBestApiKeyForUser(ctx, tc.userID)
+			//todo update the expectations to test for the returned integer as well (currently _ below)
+			apiKey, _, err := server.GetBestApiKeyForUser(ctx, tc.userID)
 
 			// Check for expected error
 			if tc.expectedError != "" {

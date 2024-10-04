@@ -8,31 +8,37 @@
         "name": {
           "title": "Full Name",
           "type": "string",
+          "default": "",
           "description": "The candidate's full name."
         },
         "email": {
           "title": "Email",
           "type": "string",
+          "default": "",
           "description": "The candidate's email address."
         },
         "phone": {
           "title": "Telephone",
           "type": "string",
+          "default": "",
           "description": "The candidate's phone number."
         },
         "linkedin": {
           "title": "LinkedIn Profile URL",
           "type": ["string","null"],
+          "default": null,
           "description": "The candidate's LinkedIn profile URL."
         },
         "location": {
           "title": "City, State",
           "type": "string",
+          "default": "",
           "description": "The candidate's city and province/state."
         },
         "github": {
           "title": "Github URL",
           "type": ["string","null"],
+          "default": null,
           "description": "The candidate's GitHub profile URL."
         }
       },
@@ -57,26 +63,31 @@
           "company": {
             "title": "Company Name",
             "type": "string",
+            "default": "",
             "description": "The name of the company."
           },
           "tag": {
             "title": "Company Shortname",
             "type": "string",
+            "default": "",
             "description": "A short tag or label for the company. (or leave blank)"
           },
           "location": {
             "title": "Company Location",
             "type": "string",
+            "default": "",
             "description": "The location of the company."
           },
           "jobtitle": {
             "title": "Job Title",
             "type": "string",
+            "default": "",
             "description": "The job title held at the company."
           },
           "daterange": {
             "title": "Date Range",
             "type": "string",
+            "default": "",
             "description": "The date range during which the candidate worked at the company."
           },
           "projects": {
@@ -88,19 +99,23 @@
                 "desc": {
                   "title": "Description",
                   "type": "string",
+                  "default": "",
                   "description": "A description of the project and what was done including a mention of the technologies used."
                 },
                 "github": {
                   "type": ["string","null"],
+                  "default": null,
                   "description": "A link to the project's GitHub repository."
                 },
                 "location": {
                   "type": "string",
+                  "default": "",
                   "description": "The location from where the project was completed."
                 },
                 "jobtitle": {
                   "title": "Job Title",
                   "type": "string",
+                  "default": "",
                   "description": "The job title held while working on the project."
                 }
               },
@@ -121,18 +136,22 @@
         "properties": {
           "institution": {
             "type": "string",
+            "default": "",
             "description": "The name of the educational institution."
           },
           "location": {
             "type": ["string","null"],
+            "default": "",
             "description": "The location of the educational institution."
           },
           "description": {
             "type": "string",
+            "default": "",
             "description": "A description of the education received, including the diploma or degree type."
           },
           "graduated": {
             "type": "string",
+            "default": "",
             "description": "The date of graduation."
           },
           "notes": {

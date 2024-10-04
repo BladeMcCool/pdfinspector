@@ -5,6 +5,7 @@ go 1.22
 require (
 	cloud.google.com/go/run v1.3.7
 	cloud.google.com/go/storage v1.43.0
+	github.com/davecgh/go-spew v1.1.1
 	github.com/disintegration/imaging v1.6.2
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-chi/cors v1.2.1
@@ -12,6 +13,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/rs/zerolog v1.33.0
 	github.com/stripe/stripe-go/v79 v79.12.0
+	github.com/xeipuuv/gojsonschema v1.2.0
 	golang.org/x/oauth2 v0.21.0
 	google.golang.org/api v0.187.0
 )
@@ -33,6 +35,8 @@ require (
 	github.com/googleapis/gax-go/v2 v2.12.5 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
+	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect

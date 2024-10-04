@@ -63,19 +63,21 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 	}
 	SendJobUpdate(updates, "got baseline JSON")
 
-	layout, style, err := t.GetLayoutFromBaselineJSON(job.BaselineJSON)
-	if err != nil {
-		return fmt.Errorf("error from extracting layout from baseline JSON: %v", err)
-	}
-	if job.StyleOverride != "" {
-		style = job.StyleOverride
-	}
-	job.Layout = layout
-	job.Style = style
-
+	//todo wtf
+	// no - the job that is submitted to the server needs to specify this stuff.
+	//layout, style, err := t.GetStyleFromBaselineJSON(job.BaselineJSON)
+	//if err != nil {
+	//	return fmt.Errorf("error from extracting layout from baseline JSON: %v", err)
+	//}
+	//if job.StyleOverride != "" {
+	//	style = job.StyleOverride
+	//}
+	//job.Layout = layout
+	//job.Style = style
+	var err error
 	mainPrompt := job.CustomPrompt
 	if mainPrompt == "" {
-		mainPrompt, err = t.GetDefaultPrompt(layout)
+		mainPrompt, err = t.GetDefaultPrompt(job.Layout)
 		if err != nil {
 			job.Log().Error().Msgf("error from reading input prompt: %s", err.Error())
 			return err
@@ -117,8 +119,9 @@ func (t *Tuner) GetBaselineJSON(baseline string) (string, error) {
 	return string(body), nil
 }
 
-func (t *Tuner) GetLayoutFromBaselineJSON(baselineJSON string) (string, string, error) {
-	//if i want anything else beyond layout and style i should return a struct because this is ugly.
+func (t *Tuner) GetStyleFromBaselineJSON(baselineJSON string) (string, string, error) {
+	// actually i think this whole func should be deprecated.
+	// at least outside of the 'main' run. server submitted jobs should be explicit.
 
 	log.Trace().Msgf("dbg baselinejson %s", baselineJSON)
 	var decoded map[string]interface{}
@@ -127,12 +130,14 @@ func (t *Tuner) GetLayoutFromBaselineJSON(baselineJSON string) (string, string, 
 		return "", "", err
 	}
 
-	// Check if the "layout" key exists and is a string
+	//Check if the "layout" key exists and is a string
 	layout, ok := decoded["layout"].(string)
 	if !ok {
 		return "", "", errors.New("layout is missing or not a string")
 	}
-	// Check if the "style" key exists and is a string (its ok if its not there but if it is we should keep it)
+	//Check if the "style" key exists and is a string (its ok if its not there but if it is we should keep it)
+	//while it needs to be in the resume data for the resume app to render it it doesnt belong in
+
 	style, _ := decoded["style"].(string)
 
 	return layout, style, nil

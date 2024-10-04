@@ -50,7 +50,7 @@ func cliRunJob(config *config.ServiceConfig) {
 	if err != nil {
 		log.Fatal().Msgf("error from reading baseline JSON: %v", err)
 	}
-	layout, style, err := t.GetLayoutFromBaselineJSON(baselineJSON)
+	layout, style, err := t.GetStyleFromBaselineJSON(baselineJSON)
 	if err != nil {
 		log.Fatal().Msgf("error from extracting layout from baseline JSON: %v", err)
 	}
@@ -83,7 +83,7 @@ func cliRunJob(config *config.ServiceConfig) {
 	inputJob := job.NewDefaultJob()
 	inputJob.JobDescription = input.JD
 	inputJob.Layout = layout
-	inputJob.Style = style
+	inputJob.StyleOverride = style
 	inputJob.MainPrompt = mainPrompt
 	inputJob.BaselineJSON = baselineJSON
 	//inputJob.OutputDir = filepath.Join(config.LocalPath, inputjob.Id) //should not use this for things that end up on gcs from a windows machine b/c it gets a backslash. idk probably should have local and gcs dirs saved separately so local can use local path sep and gcs always use forward slash.

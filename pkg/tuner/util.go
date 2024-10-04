@@ -106,7 +106,7 @@ func WriteAttemptResumedataJSON(content string, job *job.Job, attemptNum int, fs
 	// Step 5: Write the validated content to the filesystem in a way the resume projects json server can read it, plus locally for posterity.
 	// Assuming the file path is up and outside of the project directory
 	// Example: /home/user/output/validated_content.json
-	updatedContent, err := insertLayout(content, job.Layout, job.Style)
+	updatedContent, err := insertLayout(content, job.Layout, job.StyleOverride)
 	if err != nil {
 		job.Log().Error().Msgf("Error inserting layout info: %v", err)
 		return err
