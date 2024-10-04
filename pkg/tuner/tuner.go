@@ -63,17 +63,6 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 	}
 	SendJobUpdate(updates, "got baseline JSON")
 
-	//todo wtf
-	// no - the job that is submitted to the server needs to specify this stuff.
-	//layout, style, err := t.GetStyleFromBaselineJSON(job.BaselineJSON)
-	//if err != nil {
-	//	return fmt.Errorf("error from extracting layout from baseline JSON: %v", err)
-	//}
-	//if job.StyleOverride != "" {
-	//	style = job.StyleOverride
-	//}
-	//job.Layout = layout
-	//job.Style = style
 	var err error
 	mainPrompt := job.CustomPrompt
 	if mainPrompt == "" {
@@ -120,8 +109,8 @@ func (t *Tuner) GetBaselineJSON(baseline string) (string, error) {
 }
 
 func (t *Tuner) GetStyleFromBaselineJSON(baselineJSON string) (string, string, error) {
-	// actually i think this whole func should be deprecated.
-	// at least outside of the 'main' run. server submitted jobs should be explicit.
+	// deprecated outside of the 'main' run. server submitted jobs should be explicit about the layout
+	// layout/style override dont get baked into the baseline data until right before we save to GCS.
 
 	log.Trace().Msgf("dbg baselinejson %s", baselineJSON)
 	var decoded map[string]interface{}
@@ -136,8 +125,6 @@ func (t *Tuner) GetStyleFromBaselineJSON(baselineJSON string) (string, string, e
 		return "", "", errors.New("layout is missing or not a string")
 	}
 	//Check if the "style" key exists and is a string (its ok if its not there but if it is we should keep it)
-	//while it needs to be in the resume data for the resume app to render it it doesnt belong in
-
 	style, _ := decoded["style"].(string)
 
 	return layout, style, nil

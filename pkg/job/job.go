@@ -33,9 +33,6 @@ type Job struct {
 	OverrideJobId  *string `json:"job_id,omitempty"` //generally speaking this can't be set by a user, is just for admin/testing
 	Layout         string  `json:"layout""`
 
-	//pulled up or determined from the baseline or baselinejson, could be overrode (perhaps) by job.
-	//Style string
-
 	MainPrompt string
 	//ExpectResponseSchema interface{} //will get a json schema based on the layout.
 
@@ -99,20 +96,9 @@ func (job *Job) ValidateForNonAdmin() error {
 		return errors.New("Result is not a valid map")
 	}
 
-	//todo wtf
-	// Extract the "layout" field from the map
-	layoutValue := job.Layout
-	//if layoutValue == "" {
-	//	//try to get it from the job? i feel like this was backwards, it should probably have just come from the job. we do this right before writing it to GCS for the JSON server: insertLayout(content, job.Layout, job.Style) so ....
-	//	layoutValue, ok = data["layout"].(string)
-	//	if !ok {
-	//		return errors.New("Layout key not found or is not a string - in either the Job or the resumeData!")
-	//	}
-	//}
-
 	// Check if the layout value is either "functional" or "chrono"
-	if layoutValue == "functional" || layoutValue == "chrono" {
-		log.Info().Msgf("The layout is: %s", layoutValue)
+	if job.Layout == "functional" || job.Layout == "chrono" {
+		log.Info().Msgf("The layout is: %s", job.Layout)
 	} else {
 		return errors.New("The layout is neither 'functional' nor 'chrono'")
 	}
