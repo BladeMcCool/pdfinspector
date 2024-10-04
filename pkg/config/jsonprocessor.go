@@ -34,6 +34,21 @@ func ExtractRelevantSchema(input interface{}) map[string]interface{} {
 		result["type"] = schemaMap["type"]
 	}
 
+	// Extract "required" if present
+	if hasKey(schemaMap, "required") {
+		result["required"] = schemaMap["required"]
+	}
+
+	// Extract "additionalProperties" if present
+	if hasKey(schemaMap, "additionalProperties") {
+		result["additionalProperties"] = schemaMap["additionalProperties"]
+	}
+
+	// Extract "additionalProperties" if present
+	if hasKey(schemaMap, "description") {
+		result["description"] = schemaMap["description"]
+	}
+
 	// Extract the "properties" key and recursively process each property
 	if hasKey(schemaMap, "properties") {
 		properties := schemaMap["properties"].(map[string]interface{})
@@ -44,16 +59,6 @@ func ExtractRelevantSchema(input interface{}) map[string]interface{} {
 			strippedProperties[propName] = ExtractRelevantSchema(propValueMap)
 		}
 		result["properties"] = strippedProperties
-	}
-
-	// Extract "required" if present
-	if hasKey(schemaMap, "required") {
-		result["required"] = schemaMap["required"]
-	}
-
-	// Extract "additionalProperties" if present
-	if hasKey(schemaMap, "additionalProperties") {
-		result["additionalProperties"] = schemaMap["additionalProperties"]
 	}
 
 	// Handle arrays (with "items")
