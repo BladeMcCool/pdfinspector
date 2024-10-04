@@ -20,17 +20,14 @@ func (j *JobRunner) RunJob(job *job.Job, updates chan job.JobStatus) {
 		tuner.SendJobUpdate(updates, fmt.Sprintf("credit remaining: %d", job.UserCreditRemaining))
 	}
 	job.Log().Trace().Msgf("do something with this job: %#v", job)
-	//return
 
-	t := j.Tuner
-
-	err := t.PopulateJob(job, updates)
+	err := j.Tuner.PopulateJob(job, updates)
 	if err != nil {
 		job.Log().Error().Msgf("Error from PopulateJob: %v", err)
 	}
 	job.Log().Trace().Msgf("debug here job output dir: %s", job.OutputDir)
 
-	err = t.TuneResumeContents(job, updates)
+	err = j.Tuner.TuneResumeContents(job, updates)
 	if err != nil {
 		job.Log().Error().Msgf("Error from resume tuning: %v", err)
 		tuner.SendJobErrorUpdate(updates, fmt.Sprintf("Error from resume tuning: %v", err))

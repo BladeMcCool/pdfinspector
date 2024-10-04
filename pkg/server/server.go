@@ -87,6 +87,13 @@ func (s *pdfInspectorServer) initRoutes() {
 		protected.Use(s.AuthMiddleware)
 		protected.Get("/claimapitoken", s.claimAPIToken)
 		protected.Post("/streamjob", s.streamJobHandler) // Keep the connection open while running the job and streaming updates
+
+		//template CRUD
+		protected.Get("/templates", s.ListTemplatesHandler)
+		protected.Post("/templates", s.CreateTemplateHandler)
+		protected.Get("/templates/{template}", s.ReadTemplateHandler)
+		protected.Put("/templates/{template}", s.UpdateTemplateHandler)
+		protected.Delete("/templates/{template}", s.DeleteTemplateHandler)
 	})
 
 	s.router = router

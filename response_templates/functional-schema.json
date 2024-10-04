@@ -8,31 +8,37 @@
         "name": {
           "title": "Full Name",
           "type": "string",
+          "default": "",
           "description": "The candidate's full name."
         },
         "email": {
           "title": "Email",
           "type": "string",
+          "default": "",
           "description": "The candidate's email address."
         },
         "phone": {
           "title": "Telephone",
           "type": "string",
+          "default": "",
           "description": "The candidate's phone number."
         },
         "linkedin": {
           "title": "LinkedIn Profile URL",
-          "type": "string",
+          "type": ["string","null"],
+          "default": null,
           "description": "The candidate's LinkedIn profile URL."
         },
         "location": {
           "title": "City, State",
           "type": "string",
+          "default": "",
           "description": "The candidate's city and province/state."
         },
         "github": {
           "title": "Github URL",
-          "type": "string",
+          "type": ["string","null"],
+          "default": null,
           "description": "The candidate's GitHub profile URL."
         }
       },
@@ -53,18 +59,22 @@
         "properties": {
           "institution": {
             "type": "string",
+            "default": "",
             "description": "The name of the educational institution."
           },
           "location": {
             "type": ["string","null"],
+            "default": "",
             "description": "The location of the educational institution."
           },
           "description": {
             "type": "string",
+            "default": "",
             "description": "A description of the education received, including the diploma or degree type."
           },
           "graduated": {
             "type": "string",
+            "default": "",
             "description": "The date of graduation."
           },
           "notes": {
@@ -88,6 +98,7 @@
           "title": {
             "title": "Functional Area",
             "type": "string",
+            "default": "",
             "description": "Title or heading for the functional area of work."
           },
           "key_contributions": {
@@ -99,11 +110,13 @@
                 "description": {
                   "title": "Description",
                   "type": "string",
+                  "default": "",
                   "description": "Description of the accomplishment."
                 },
                 "lead_in": {
                   "title": "Lead in",
                   "type": "integer",
+                  "default": 0,
                   "description": "A count of the action words to highlight, from the start of the description"
                 },
                 "tech": {
@@ -117,11 +130,13 @@
                 "daterange": {
                   "title": "Date Range",
                   "type": "string",
+                  "default": "",
                   "description": "The date range during which the work was performed."
                 },
                 "company": {
                   "title": "Company",
                   "type": "string",
+                  "default": "",
                   "description": "The company where the work was performed."
                 }
               },
@@ -141,18 +156,22 @@
         "properties": {
           "title": {
             "type": "string",
+            "default": "",
             "description": "The job title held at the company."
           },
           "company": {
             "type": "string",
+            "default": "",
             "description": "The name of the company."
           },
           "location": {
             "type": "string",
+            "default": "",
             "description": "The location of the company."
           },
           "daterange": {
             "type": "string",
+            "default": "",
             "description": "The date range during which the candidate worked at the company."
           }
         },

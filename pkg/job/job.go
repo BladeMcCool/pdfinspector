@@ -31,10 +31,8 @@ type Job struct {
 	StyleOverride  string `json:"style_override"` //eg fluffy
 	Id             string
 	OverrideJobId  *string `json:"job_id,omitempty"` //generally speaking this can't be set by a user, is just for admin/testing
+	Layout         string  `json:"layout""`
 
-	//pulled up or determined from the baseline or baselinejson, could be overrode (perhaps) by job.
-	Layout     string
-	Style      string
 	MainPrompt string
 	//ExpectResponseSchema interface{} //will get a json schema based on the layout.
 
@@ -98,15 +96,9 @@ func (job *Job) ValidateForNonAdmin() error {
 		return errors.New("Result is not a valid map")
 	}
 
-	// Extract the "layout" field from the map
-	layoutValue, ok := data["layout"].(string)
-	if !ok {
-		return errors.New("Layout key not found or is not a string")
-	}
-
 	// Check if the layout value is either "functional" or "chrono"
-	if layoutValue == "functional" || layoutValue == "chrono" {
-		log.Info().Msgf("The layout is: %s", layoutValue)
+	if job.Layout == "functional" || job.Layout == "chrono" {
+		log.Info().Msgf("The layout is: %s", job.Layout)
 	} else {
 		return errors.New("The layout is neither 'functional' nor 'chrono'")
 	}
