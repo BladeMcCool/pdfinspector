@@ -28,12 +28,16 @@ func (s *pdfInspectorServer) SSOUserDetectionMiddleware(next http.Handler) http.
 			return
 		}
 
-		//todo - we needs to decode the credential and determine if its a google sso credential or just an already vetted sso subject id claim on an api key.
 		var ssoSubject string
 		gotSsoSubject := false
 		bearerToken, _ := s.extractBearerToken(r)
-		mapClaims, err := s.ValidateCustomToken(credential, bearerToken)
-		log.Info().Msgf("SSOUserDetectionMiddleware with credential %s and bearer %s", credential, bearerToken)
+		var useBearerToken *string
+		if bearerToken != "" {
+			useBearerToken = &bearerToken
+		}
+		mapClaims, err := s.ValidateCustomToken(credential, useBearerToken)
+		//log.Info().Msgf("SSOUserDetectionMiddleware with credential %s and bearer %s", credential, bearerToken)
+		log.Info().Msgf("SSOUserDetectionMiddleware with credential %s", credential)
 		if err == nil {
 			apikeyOwnership, ok := mapClaims["sub"].(string)
 			if !ok {
