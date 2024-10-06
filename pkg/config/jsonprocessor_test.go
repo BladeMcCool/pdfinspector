@@ -55,14 +55,16 @@ func TestExtractRelevantSchema(t *testing.T) {
 
 	// Expected stripped-down schema (with only the relevant fields)
 	expectedSchema := map[string]interface{}{
-		"$schema": "http://json-schema.org/draft-07/schema#",
-		"type":    "object",
+		"$schema":     "http://json-schema.org/draft-07/schema#",
+		"type":        "object",
+		"description": "This schema defines a person’s information",
 		"properties": map[string]interface{}{
 			"name": map[string]interface{}{
 				"type": "string",
 			},
 			"age": map[string]interface{}{
-				"type": "integer",
+				"type":        "integer",
+				"description": "Age in years",
 			},
 			"address": map[string]interface{}{
 				"type": "object",
@@ -71,7 +73,8 @@ func TestExtractRelevantSchema(t *testing.T) {
 						"type": "string",
 					},
 					"city": map[string]interface{}{
-						"type": "string",
+						"type":        "string",
+						"description": "The city name",
 					},
 				},
 				"required": []interface{}{"street"},
@@ -81,6 +84,7 @@ func TestExtractRelevantSchema(t *testing.T) {
 				"items": map[string]interface{}{
 					"type": "string",
 				},
+				"description": "Tags for the person",
 			},
 		},
 		"required":             []interface{}{"name", "age"},

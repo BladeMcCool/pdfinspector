@@ -26,12 +26,10 @@ type generationInfoFormatted struct {
 }
 
 // CreateCustomToken creates a JWT with 'sub' and 'apikey'
-func (s *pdfInspectorServer) CreateCustomToken(sub, apiKey string) (string, error) {
-	// Define the custom claims to include in the JWT
+func (s *pdfInspectorServer) CreateCustomToken(sub string) (string, error) {
 	claims := jwt.MapClaims{
-		"sub":    sub,                                         // User identifier
-		"apikey": apiKey,                                      // Your API key
-		"exp":    time.Now().Add(365 * 24 * time.Hour).Unix(), // Expiration time (1 year)
+		"sub": sub,                                         // User identifier
+		"exp": time.Now().Add(365 * 24 * time.Hour).Unix(), // Expiration time (1 year)
 	}
 
 	// Create the JWT with the claims and sign it with the secret key
@@ -45,16 +43,13 @@ func (s *pdfInspectorServer) CreateCustomToken(sub, apiKey string) (string, erro
 }
 
 // ValidateCustomToken verifies the JWT and returns the claims if valid
-func (s *pdfInspectorServer) ValidateCustomToken(tokenString string, apiKey string) (jwt.MapClaims, error) {
+func (s *pdfInspectorServer) ValidateCustomToken(tokenString string) (jwt.MapClaims, error) {
 	// Parse and validate the JWT
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Check if the signing method is HMAC (HS256 in this case)
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		// Return the secret key for validating the token signature
+		// Return the secret key for verifying the token signature
 		return []byte(s.config.JwtSecret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name})) // Specify allowed algorithms here
+
 	if err != nil {
 		return nil, fmt.Errorf("invalid token: %v", err)
 	}
@@ -67,13 +62,7 @@ func (s *pdfInspectorServer) ValidateCustomToken(tokenString string, apiKey stri
 	if !ok {
 		return nil, fmt.Errorf("invalid token - no claims?")
 	}
-	claimedApiKey, ok := claims["apikey"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid token - missing apikey")
-	}
-	if claimedApiKey != apiKey {
-		return nil, fmt.Errorf("apikey ownership claim mismatch")
-	}
+
 	return claims, nil
 }
 
