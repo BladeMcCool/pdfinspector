@@ -78,7 +78,7 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Get("/joboutput/*", s.jobOutputHandler) // Get the output
 	router.Get("/schema/{layout}", s.GetJsonSchemaHandler)
 	router.Get("/getapitoken", s.GetAPIToken)
-	router.Get("/claimapitoken/{userKey}", s.claimAPIToken)
+	//router.Get("/claimapitoken/{userKey}", s.claimAPIToken)
 	router.Get("/getusergenids", s.GetUserGenIDsHandler)
 	//router.Post("/create-payment-intent", s.handleCreatePaymentIntent)
 	router.Post("/stripe-webhook", s.handleStripeWebhook)
@@ -388,49 +388,52 @@ func (s *pdfInspectorServer) GetAPIToken(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Step 5: Return the API key as a JSON response
-	apiKeyOwnership, err := s.CreateCustomToken(userID, apiKey) //this is really about being able to verify claims that a apikey is making a generation for a sso sub id, so that we can record the generation there. i dont want to just trust the user and i dont want to deal with google sso oauth2 refresh token management and shit just to be able to validate the sso credential (which expires after 1 hour in the simple auth mode where we just get a signed id token from google api) so we can't rely on that being still 'valid'. however, if we roll our own at a time when we know the sso credential is valid to associate that apikey with that sso sub id, then i think it serves the purpose. thanks for reading!
+	jwt, err := s.CreateCustomToken(userID) //this is really about being able to verify claims that a apikey is making a generation for a sso sub id, so that we can record the generation there. i dont want to just trust the user and i dont want to deal with google sso oauth2 refresh token management and shit just to be able to validate the sso credential (which expires after 1 hour in the simple auth mode where we just get a signed id token from google api) so we can't rely on that being still 'valid'. however, if we roll our own at a time when we know the sso credential is valid to associate that apikey with that sso sub id, then i think it serves the purpose. thanks for reading!
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Step 5: Return the API key as a JSON response. and a jwt with a better expiry that we can keep refreshing just because.
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
-		"apiKey":          apiKey,
-		"totalCredits":    totalCredits,
-		"apiKeyOwnership": apiKeyOwnership,
+		"apiKey":       apiKey,
+		"totalCredits": totalCredits,
+		"jwt":          jwt,
 	}
 	json.NewEncoder(w).Encode(response)
 }
 
-func (s *pdfInspectorServer) claimAPIToken(w http.ResponseWriter, r *http.Request) {
-	//the only real point of this one is to cover the edge case where a signed in person wants to use a custom apikey to do a generation that they'd like to be able to recall later.
-	// and wow brother have i spent too much time trying to make this work. not sure there is/was much point oh well.
-	// i want to feel safe about doling out the same apikey to multiple people tho and have shit just work and have generations done on that show up where they should.
-	//userKey, _ := r.Context().Value("userKey").(string)
-	userKey := chi.URLParam(r, "userKey")
-	knownApiKey, err := s.checkApiKeyExists(r.Context(), userKey)
-	if err != nil || knownApiKey == false {
-		// If the token is not a known user, deny access
-		http.Error(w, "Unauthorized: Unknown user token", http.StatusUnauthorized)
-		return
-	}
-
-	ssoSubject, _ := r.Context().Value("ssoSubject").(string)
-	log.Trace().Msgf("here in claimAPIToken with %s and %s", userKey, ssoSubject)
-
-	apiKeyOwnership, err := s.CreateCustomToken(ssoSubject, userKey)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{
-		"apiKeyOwnership": apiKeyOwnership,
-	}
-	json.NewEncoder(w).Encode(response)
-}
+//func (s *pdfInspectorServer) claimAPIToken(w http.ResponseWriter, r *http.Request) {
+//	//the only real point of this one is to cover the edge case where a signed in person wants to use a custom apikey to do a generation that they'd like to be able to recall later.
+//	// and wow brother have i spent too much time trying to make this work. not sure there is/was much point oh well.
+//	// i want to feel safe about doling out the same apikey to multiple people tho and have shit just work and have generations done on that show up where they should.
+//
+//	//idk why dont i just get rid of this. i just want to know who they are for one thing and i want to know if they have money for a different thing so its not really the same purpose even. other than someone paying money should be able to see their own stuff.
+//
+//	//userKey, _ := r.Context().Value("userKey").(string)
+//	userKey := chi.URLParam(r, "userKey")
+//	knownApiKey, err := s.checkApiKeyExists(r.Context(), userKey)
+//	if err != nil || knownApiKey == false {
+//		// If the token is not a known user, deny access
+//		http.Error(w, "Unauthorized: Unknown user token", http.StatusUnauthorized)
+//		return
+//	}
+//
+//	ssoSubject, _ := r.Context().Value("ssoSubject").(string)
+//	log.Trace().Msgf("here in claimAPIToken with %s and %s", userKey, ssoSubject)
+//
+//	apiKeyOwnership, err := s.CreateCustomToken(ssoSubject, userKey)
+//	if err != nil {
+//		http.Error(w, err.Error(), http.StatusInternalServerError)
+//	}
+//
+//	w.Header().Set("Content-Type", "application/json")
+//	response := map[string]interface{}{
+//		"apiKeyOwnership": apiKeyOwnership,
+//	}
+//	json.NewEncoder(w).Encode(response)
+//}
 
 // GetBestApiKeyForUser retrieves the best API key for a user based on the least positive remaining credits.
 func (s *pdfInspectorServer) GetBestApiKeyForUser(ctx context.Context, userID string) (string, int, error) {

@@ -30,23 +30,17 @@ func (s *pdfInspectorServer) SSOUserDetectionMiddleware(next http.Handler) http.
 
 		var ssoSubject string
 		gotSsoSubject := false
-		bearerToken, _ := s.extractBearerToken(r)
-		var useBearerToken *string
-		if bearerToken != "" {
-			useBearerToken = &bearerToken
-		}
-		mapClaims, err := s.ValidateCustomToken(credential, useBearerToken)
-		//log.Info().Msgf("SSOUserDetectionMiddleware with credential %s and bearer %s", credential, bearerToken)
+		mapClaims, err := s.ValidateCustomToken(credential)
 		log.Info().Msgf("SSOUserDetectionMiddleware with credential %s", credential)
 		if err == nil {
-			apikeyOwnership, ok := mapClaims["sub"].(string)
+			claimedSub, ok := mapClaims["sub"].(string)
 			if !ok {
 				log.Error().Msg("no sub ?")
 				http.Error(w, "Invalid ID token", http.StatusUnauthorized)
 				return
 			}
-			log.Info().Msgf("set ssoSubject %s from custom token", apikeyOwnership)
-			ssoSubject = apikeyOwnership
+			log.Info().Msgf("set ssoSubject %s from custom token", claimedSub)
+			ssoSubject = claimedSub
 			gotSsoSubject = true
 		} else {
 			log.Info().Msgf("err from validatecustom: %v", err)
@@ -56,6 +50,7 @@ func (s *pdfInspectorServer) SSOUserDetectionMiddleware(next http.Handler) http.
 			//might be a google one during a login
 			payload, err := idtoken.Validate(r.Context(), credential, s.config.FrontendClientID)
 			if err != nil {
+				log.Error().Msgf("err from idtoken.Validate? %#v", err)
 				http.Error(w, "Invalid ID token", http.StatusUnauthorized)
 				return
 			}

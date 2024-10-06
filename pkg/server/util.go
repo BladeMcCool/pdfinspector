@@ -3,8 +3,6 @@ package server
 import (
 	"cloud.google.com/go/storage"
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,16 +26,10 @@ type generationInfoFormatted struct {
 }
 
 // CreateCustomToken creates a JWT with 'sub' and 'apikey'
-func (s *pdfInspectorServer) CreateCustomToken(sub, apiKey string) (string, error) {
-	// Define the custom claims to include in the JWT
-	hasher := sha1.New()
-	hasher.Write([]byte(apiKey))
-	sha := hex.EncodeToString(hasher.Sum(nil))
-
+func (s *pdfInspectorServer) CreateCustomToken(sub string) (string, error) {
 	claims := jwt.MapClaims{
-		"sub":    sub,                                         // User identifier
-		"apikey": sha,                                         // Your API key
-		"exp":    time.Now().Add(365 * 24 * time.Hour).Unix(), // Expiration time (1 year)
+		"sub": sub,                                         // User identifier
+		"exp": time.Now().Add(365 * 24 * time.Hour).Unix(), // Expiration time (1 year)
 	}
 
 	// Create the JWT with the claims and sign it with the secret key
@@ -51,14 +43,14 @@ func (s *pdfInspectorServer) CreateCustomToken(sub, apiKey string) (string, erro
 }
 
 // ValidateCustomToken verifies the JWT and returns the claims if valid
-func (s *pdfInspectorServer) ValidateCustomToken(tokenString string, apiKey *string) (jwt.MapClaims, error) {
+func (s *pdfInspectorServer) ValidateCustomToken(tokenString string) (jwt.MapClaims, error) {
 	// Parse and validate the JWT
 	//token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 	//	// Return the secret key for verifying the token signature
 	//	return []byte(s.config.JwtSecret), nil
 	//	//return []byte("should fail every time"), nil //todo confirm this does fail every time if we break the key.
 	//}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name})) // Specify allowed algorithms here
-
+	//todo yeah try that stuff above looks fun :)
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Check if the signing method is HMAC (HS256 in this case)
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -81,23 +73,6 @@ func (s *pdfInspectorServer) ValidateCustomToken(tokenString string, apiKey *str
 		return nil, fmt.Errorf("invalid token - no claims?")
 	}
 
-	//i think if i'm trying to _get_ an apikey then its ok that i dont have one already. server just wants to know who it is
-	if apiKey == nil {
-		return claims, nil
-	}
-
-	claimedApiKeyHash, ok := claims["apikey"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid token - missing apikey")
-	}
-
-	hasher := sha1.New()
-	hasher.Write([]byte(*apiKey))
-	sha := hex.EncodeToString(hasher.Sum(nil))
-
-	if claimedApiKeyHash != sha {
-		return nil, fmt.Errorf("apikey ownership claim mismatch")
-	}
 	return claims, nil
 }
 
