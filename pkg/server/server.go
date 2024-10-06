@@ -78,7 +78,6 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Get("/joboutput/*", s.jobOutputHandler) // Get the output
 	router.Get("/schema/{layout}", s.GetJsonSchemaHandler)
 	router.Get("/getapitoken", s.GetAPIToken)
-	//router.Get("/claimapitoken/{userKey}", s.claimAPIToken)
 	router.Get("/getusergenids", s.GetUserGenIDsHandler)
 	//router.Post("/create-payment-intent", s.handleCreatePaymentIntent)
 	router.Post("/stripe-webhook", s.handleStripeWebhook)
@@ -403,37 +402,6 @@ func (s *pdfInspectorServer) GetAPIToken(w http.ResponseWriter, r *http.Request)
 	}
 	json.NewEncoder(w).Encode(response)
 }
-
-//func (s *pdfInspectorServer) claimAPIToken(w http.ResponseWriter, r *http.Request) {
-//	//the only real point of this one is to cover the edge case where a signed in person wants to use a custom apikey to do a generation that they'd like to be able to recall later.
-//	// and wow brother have i spent too much time trying to make this work. not sure there is/was much point oh well.
-//	// i want to feel safe about doling out the same apikey to multiple people tho and have shit just work and have generations done on that show up where they should.
-//
-//	//idk why dont i just get rid of this. i just want to know who they are for one thing and i want to know if they have money for a different thing so its not really the same purpose even. other than someone paying money should be able to see their own stuff.
-//
-//	//userKey, _ := r.Context().Value("userKey").(string)
-//	userKey := chi.URLParam(r, "userKey")
-//	knownApiKey, err := s.checkApiKeyExists(r.Context(), userKey)
-//	if err != nil || knownApiKey == false {
-//		// If the token is not a known user, deny access
-//		http.Error(w, "Unauthorized: Unknown user token", http.StatusUnauthorized)
-//		return
-//	}
-//
-//	ssoSubject, _ := r.Context().Value("ssoSubject").(string)
-//	log.Trace().Msgf("here in claimAPIToken with %s and %s", userKey, ssoSubject)
-//
-//	apiKeyOwnership, err := s.CreateCustomToken(ssoSubject, userKey)
-//	if err != nil {
-//		http.Error(w, err.Error(), http.StatusInternalServerError)
-//	}
-//
-//	w.Header().Set("Content-Type", "application/json")
-//	response := map[string]interface{}{
-//		"apiKeyOwnership": apiKeyOwnership,
-//	}
-//	json.NewEncoder(w).Encode(response)
-//}
 
 // GetBestApiKeyForUser retrieves the best API key for a user based on the least positive remaining credits.
 func (s *pdfInspectorServer) GetBestApiKeyForUser(ctx context.Context, userID string) (string, int, error) {

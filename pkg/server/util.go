@@ -45,21 +45,11 @@ func (s *pdfInspectorServer) CreateCustomToken(sub string) (string, error) {
 // ValidateCustomToken verifies the JWT and returns the claims if valid
 func (s *pdfInspectorServer) ValidateCustomToken(tokenString string) (jwt.MapClaims, error) {
 	// Parse and validate the JWT
-	//token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-	//	// Return the secret key for verifying the token signature
-	//	return []byte(s.config.JwtSecret), nil
-	//	//return []byte("should fail every time"), nil //todo confirm this does fail every time if we break the key.
-	//}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name})) // Specify allowed algorithms here
-	//todo yeah try that stuff above looks fun :)
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Check if the signing method is HMAC (HS256 in this case)
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		// Return the secret key for validating the token signature
+		// Return the secret key for verifying the token signature
 		return []byte(s.config.JwtSecret), nil
-		//return []byte("should fail every time"), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name})) // Specify allowed algorithms here
+
 	if err != nil {
 		return nil, fmt.Errorf("invalid token: %v", err)
 	}
