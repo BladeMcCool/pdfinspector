@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/xeipuuv/gojsonschema"
+	"sort"
+	"time"
 
 	//"github.com/xeipuuv/gojsonschema"
 	"google.golang.org/api/iterator"
@@ -18,6 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 )
+
+const MAX_TEMPLATES_ALLOWED_PER_SSO = 100
 
 type Template struct {
 	Name          string      `json:"name"`
@@ -29,10 +33,19 @@ type Template struct {
 
 // generationInfo holds template metadata.
 type templateInfo struct {
-	UUID    string `json:"uuid"`
-	Name    string `json:"name"`
-	Created string `json:"created"`
-	Updated string `json:"updated"`
+	UUID    string         `json:"uuid"`
+	Name    string         `json:"name"`
+	Created JSONTimePretty `json:"created"`
+	Updated JSONTimePretty `json:"updated"`
+}
+type JSONTime time.Time
+type JSONTimePretty time.Time
+
+func (t JSONTime) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", time.Time(t).Format("2006-01-02T15:04:05Z"))), nil
+}
+func (t JSONTimePretty) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", time.Time(t).Format("2006 Jan 2, 3:04pm"))), nil
 }
 
 // CreateTemplateHandler handles the creation of a new template.
@@ -62,7 +75,7 @@ func (s *pdfInspectorServer) CreateTemplateHandler(w http.ResponseWriter, r *htt
 		http.Error(w, "Failed to retrieve template count", http.StatusInternalServerError)
 		return
 	}
-	if templateCount >= 100 {
+	if templateCount >= MAX_TEMPLATES_ALLOWED_PER_SSO {
 		http.Error(w, "Template limit reached", http.StatusForbidden)
 		return
 	}
@@ -160,24 +173,31 @@ func (s *pdfInspectorServer) getValidatedTemplateFromRequest(w http.ResponseWrit
 	}
 
 	// Step 2: Validate 'resumedata' against the schema.
-	schemaInterface, err := s.jobRunner.Tuner.GetExpectedResponseJsonSchema(template.Layout)
+	err := s.validateResumeDataAgainstTemplateSchema(template.Layout, template.ResumeData)
 	if err != nil {
-		http.Error(w, "Failed to retrieve schema", http.StatusInternalServerError)
-		return nil, err
-	}
-	schemaLoader := gojsonschema.NewGoLoader(schemaInterface)
-	documentLoader := gojsonschema.NewGoLoader(template.ResumeData)
-
-	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
-	if err != nil {
-		http.Error(w, "Schema validation error", http.StatusInternalServerError)
-		return nil, err
-	}
-	if !result.Valid() {
-		http.Error(w, "Resumedata does not match the expected schema", http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("Schema validation error: %s", err.Error()), http.StatusInternalServerError)
 		return nil, err
 	}
 	return &template, nil
+}
+
+func (s *pdfInspectorServer) validateResumeDataAgainstTemplateSchema(layout string, resumeData interface{}) error {
+	//Validate 'resumedata' against the schema.
+	schemaInterface, err := s.jobRunner.Tuner.GetExpectedResponseJsonSchema(layout)
+	if err != nil {
+		return err
+	}
+	schemaLoader := gojsonschema.NewGoLoader(schemaInterface)
+	documentLoader := gojsonschema.NewGoLoader(resumeData)
+
+	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
+	if err != nil {
+		return err
+	}
+	if !result.Valid() {
+		return err
+	}
+	return nil
 }
 
 func (s *pdfInspectorServer) getTemplateObjectName(r *http.Request) string {
@@ -189,6 +209,9 @@ func (s *pdfInspectorServer) getTemplateObjectName(r *http.Request) string {
 
 // Helper function to get the count of user templates.
 func (s *pdfInspectorServer) getUserTemplateCount(ctx context.Context, userID string) (int, error) {
+	if userID == "" {
+		return 0, errors.New("No userID available for getUserTemplateCount")
+	}
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return 0, err
@@ -319,10 +342,13 @@ func (s *pdfInspectorServer) listUserTemplates(ctx context.Context, userID strin
 		templates = append(templates, templateInfo{
 			UUID:    fileName[:uuidLen],
 			Name:    fileName[uuidLen+1:],
-			Created: objAttr.Created.Format("2006-01-02T15:04:05Z"),
-			Updated: objAttr.Updated.Format("2006-01-02T15:04:05Z"),
+			Created: JSONTimePretty(objAttr.Created),
+			Updated: JSONTimePretty(objAttr.Updated),
 		})
 	}
+	sort.Slice(templates, func(i, j int) bool {
+		return time.Time(templates[i].Updated).After(time.Time(templates[j].Updated))
+	})
 
 	return templates, nil
 }

@@ -86,6 +86,7 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Group(func(protected chi.Router) {
 		protected.Use(s.AuthMiddleware)
 		protected.Post("/streamjob", s.streamJobHandler) // Keep the connection open while running the job and streaming updates
+		protected.Post("/extractresumedata/{layout}", s.extractResumeHandler)
 
 		//template CRUD
 		protected.Get("/templates", s.ListTemplatesHandler)
