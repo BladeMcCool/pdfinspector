@@ -17,10 +17,17 @@ type ResumeExtractResult struct {
 	ResumeJSONRaw  string
 	ExpectedSchema interface{}
 }
+type ResumeExtractionJob struct {
+	FileContent   []byte
+	extractedText string
+	Layout        string
+	UseSystemGs   bool
+	UserID        string
+}
 
-func (t *Tuner) ExtractResumeContents(fileContent []byte, layout string, UseSystemGs bool, updates chan job.JobStatus) (*ResumeExtractResult, error) {
+func (t *Tuner) ExtractResumeContents(job *ResumeExtractionJob, updates chan job.JobStatus) (*ResumeExtractResult, error) {
 	SendJobUpdate(updates, "getting idk")
-	expectResponseSchema, err := t.GetExpectedResponseJsonSchema(layout)
+	expectResponseSchema, err := t.GetExpectedResponseJsonSchema(job.Layout)
 	if err != nil {
 		return nil, fmt.Errorf("Error getting schema: %v\n", err)
 	}
@@ -44,7 +51,7 @@ func (t *Tuner) ExtractResumeContents(fileContent []byte, layout string, UseSyst
 	inputFilePath := filepath.Join(outputDirFullpath, "input.pdf")
 
 	// Write the file data to the new file (input.pdf)
-	err = os.WriteFile(inputFilePath, fileContent, os.ModePerm)
+	err = os.WriteFile(inputFilePath, job.FileContent, os.ModePerm)
 	if err != nil {
 		return nil, fmt.Errorf("couldnt write pdf to filesystem")
 	}
@@ -52,7 +59,7 @@ func (t *Tuner) ExtractResumeContents(fileContent []byte, layout string, UseSyst
 	//could maybe check the pdf for not containing error stuff like "Uncaught runtime errors" before proceeding.
 	// MSYS_NO_PATHCONV=1 docker run --rm -v /$(pwd)/output:/workspace minidocks/ghostscript:latest gs -sDEVICE=pngalpha -o /workspace/out-%03d.png -r144 /workspace/attempt.pdf
 	var cmd *exec.Cmd
-	if UseSystemGs {
+	if job.UseSystemGs {
 		cmd = exec.Command(
 			"gs",
 			"-sDEVICE=txtwrite",
@@ -99,15 +106,15 @@ func (t *Tuner) ExtractResumeContents(fileContent []byte, layout string, UseSyst
 		return nil, fmt.Errorf("couldnt read the output file from the pdf text extract")
 	}
 	log.Trace().Msgf("read this from text file: %s", string(fileBytes))
-
-	resumeExtractionToLayoutRawJSONText, err := t.openAIResumeExtraction(fileBytes, layout, outputDirFullpath)
+	job.extractedText = string(fileBytes)
+	resumeExtractionToLayoutRawJSONText, err := t.openAIResumeExtraction(job, outputDirFullpath)
 	return &ResumeExtractResult{
 		ResumeJSONRaw:  resumeExtractionToLayoutRawJSONText,
 		ExpectedSchema: expectResponseSchema,
 	}, nil
 }
-func (t *Tuner) openAIResumeExtraction(fileContent []byte, layout string, outputDir string) (string, error) {
-	expectResponseSchema, err := t.GetExpectedResponseJsonSchema(layout)
+func (t *Tuner) openAIResumeExtraction(job *ResumeExtractionJob, outputDir string) (string, error) {
+	expectResponseSchema, err := t.GetExpectedResponseJsonSchema(job.Layout)
 	if err != nil {
 		return "", err
 	}
@@ -115,7 +122,7 @@ func (t *Tuner) openAIResumeExtraction(fileContent []byte, layout string, output
 	prompt_parts := []string{
 		"Inspect the following resume text and extract all relevant details pertaining to all fields of the included json schema. Format your response to include as much of the input resume text as possible, under appropriate output fields.",
 		"\n--- start resume text data ---\n",
-		string(fileContent),
+		job.extractedText,
 		"\n--- end resume text data ---\n",
 	}
 	prompt := strings.Join(prompt_parts, "")
@@ -141,6 +148,7 @@ func (t *Tuner) openAIResumeExtraction(fileContent []byte, layout string, output
 			},
 		},
 		"temperature": 0.7,
+		"user":        job.UserID,
 	}
 
 	api_request_pretty, err := serializeToJSON(data)

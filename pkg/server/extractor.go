@@ -89,7 +89,12 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 		updates <- job.JobStatus{Message: "Starting resume processing"}
 
 		// Process the resume contents using the extractResumeContents method
-		extractionResult, err := s.jobRunner.Tuner.ExtractResumeContents(fileContent, layout, s.config.UseSystemGs, updates)
+		extractionResult, err := s.jobRunner.Tuner.ExtractResumeContents(&tuner.ResumeExtractionJob{
+			FileContent: fileContent,
+			Layout:      layout,
+			UseSystemGs: s.config.UseSystemGs,
+			UserID:      userID,
+		}, updates)
 		log.Trace().Msgf("got resume result: %v", extractionResult)
 		if err == nil {
 			updates <- job.JobStatus{Message: "Extracted resume data into JSON"}
