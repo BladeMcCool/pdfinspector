@@ -18,17 +18,12 @@ type ResumeExtractResult struct {
 	ExpectedSchema interface{}
 }
 
-// func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, layout, style, outputDir string, fs filesystem.FileSystem, config *config.ServiceConfig, job *job.Job, updates chan job.JobStatus) error {
 func (t *Tuner) ExtractResumeContents(fileContent []byte, layout string, UseSystemGs bool, updates chan job.JobStatus) (*ResumeExtractResult, error) {
-	//job.Log().Info().Str("user_key", job.UserKey).Msgf("starting TuneResumeContents")
 	SendJobUpdate(updates, "getting idk")
 	expectResponseSchema, err := t.GetExpectedResponseJsonSchema(layout)
 	if err != nil {
 		return nil, fmt.Errorf("Error getting schema: %v\n", err)
 	}
-	_ = expectResponseSchema
-
-	//////
 
 	// Get the current working directory
 	currentDir, err := os.Getwd()
@@ -106,8 +101,6 @@ func (t *Tuner) ExtractResumeContents(fileContent []byte, layout string, UseSyst
 	log.Trace().Msgf("read this from text file: %s", string(fileBytes))
 
 	resumeExtractionToLayoutRawJSONText, err := t.openAIResumeExtraction(fileBytes, layout, outputDirFullpath)
-	_ = resumeExtractionToLayoutRawJSONText
-
 	return &ResumeExtractResult{
 		ResumeJSONRaw:  resumeExtractionToLayoutRawJSONText,
 		ExpectedSchema: expectResponseSchema,
@@ -147,10 +140,8 @@ func (t *Tuner) openAIResumeExtraction(fileContent []byte, layout string, output
 				"schema": expectResponseSchema,
 			},
 		},
-		//"max_tokens":  2000, //idk i had legit response go over 2000 because it was wordy. not sure that bug where it generated full stream of garbage happened again after putting on 'strict' tho. keep an eye on things.
 		"temperature": 0.7,
 	}
-	//messages := data["messages"].([]map[string]interface{}) //preserve orig
 
 	api_request_pretty, err := serializeToJSON(data)
 	if err != nil {
@@ -166,8 +157,6 @@ func (t *Tuner) openAIResumeExtraction(fileContent []byte, layout string, output
 		return "", fmt.Errorf("Error checking for pre-existing API output: %v", err)
 	}
 	if !exists {
-		//SendJobUpdate(updates, fmt.Sprintf("asking for an attempt %d", i))
-		//log.Info().Msg("making api request to openai ...")
 		output, err = t.makeAPIRequest(data, 0, "api_response_raw", outputDir)
 		if err != nil {
 			log.Error().Msgf("openai request had error: %s", err.Error())
@@ -197,7 +186,6 @@ func (t *Tuner) openAIResumeExtraction(fileContent []byte, layout string, output
 		return "", err
 	}
 	log.Info().Msgf("Got %d bytes of JSON content (at least well formed enough to be decodable) out of that last response", len(content))
-	//SendJobUpdate(updates, fmt.Sprintf("got JSON for attempt %d, will request PDF", i))
 
 	//this is just a string atm dunno if thats good enough lol
 	return content, nil

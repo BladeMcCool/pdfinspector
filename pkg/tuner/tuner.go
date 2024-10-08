@@ -254,7 +254,7 @@ func (t *Tuner) GetCompleteJsonSchema(layout string) (interface{}, error) {
 }
 
 func (t *Tuner) readAndDecodeJsonSchema(layout string) (interface{}, error) {
-	//todo cache this stuff in a map on t - there will only ever be a few of these, its going to be reading it from the filesystem every time!
+	//todo cache this stuff in a map - there will only ever be a few of these, its going to be reading it from the filesystem every time!
 	expectResponseFilePath := filepath.Join("response_templates", fmt.Sprintf("%s-schema.json", layout))
 	// Read expect_response.json
 	expectResponseContent, err := os.ReadFile(expectResponseFilePath)

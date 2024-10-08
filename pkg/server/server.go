@@ -220,6 +220,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 	// Marshal the final result to JSON
 	finalData, err := json.Marshal(finalResult)
 	if err != nil {
+		//todo ... hrm, is this even legit? we already sent status ok above right ? so ... we probably need to handle this differently if it somehow happened.
 		http.Error(w, "Error encoding final result", http.StatusInternalServerError)
 		return
 	}

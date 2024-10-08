@@ -71,13 +71,10 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	//todo take da money before hitting openai.
+	//todo think about whether this should be something that deducts api credit.
 
 	// Get layout parameter from request
 	layout := chi.URLParam(r, "layout")
-	_, _ = fileContent, layout
-	// Retrieve the layout schema based on the requested layout
-	//layoutSchema := getLayoutSchema(layout)
 
 	// Set headers for streaming response
 	w.Header().Set("Content-Type", "application/json")
@@ -86,17 +83,14 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 
 	updates := make(chan job.JobStatus)
 	finalResult := make(chan job.ExtractResult, 1)
-	//func sendFinalResult() {
-	//
-	//}
 	go func() {
 		//do the actual job and send updates.
 		defer close(updates)
-		_ = updates
 		updates <- job.JobStatus{Message: "Starting resume processing"}
 
 		// Process the resume contents using the extractResumeContents method
-		resumeResult, err := s.jobRunner.Tuner.ExtractResumeContents(fileContent, layout, s.config.UseSystemGs, updates)
+		extractionResult, err := s.jobRunner.Tuner.ExtractResumeContents(fileContent, layout, s.config.UseSystemGs, updates)
+		log.Trace().Msgf("got resume result: %v", extractionResult)
 		if err == nil {
 			updates <- job.JobStatus{Message: "Extracted resume data into JSON"}
 		} else {
@@ -106,7 +100,7 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 		}
 
 		var decodedResumeData interface{}
-		if err := json.Unmarshal([]byte(resumeResult.ResumeJSONRaw), &decodedResumeData); err != nil {
+		if err := json.Unmarshal([]byte(extractionResult.ResumeJSONRaw), &decodedResumeData); err != nil {
 			log.Error().Msgf("error from decoding resume json extraction: %v", err)
 			finalResult <- job.ExtractResult{JobStatus: job.JobStatus{Message: err.Error(), Error: &tuner.TrueVal}}
 			return
@@ -120,10 +114,7 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 			return
 		}
 
-		_ = resumeResult
-		log.Trace().Msgf("got result: %v", resumeResult)
 		candidateNameBestGuess, _ := s.jobRunner.Tuner.GuessCandidateName(decodedResumeData)
-		//template, err := s.jobRunner.Tuner.SaveAsTemplate(resumeResult)
 		template := &Template{
 			Name:          fmt.Sprintf("Generated Template for %s with %s layout", candidateNameBestGuess, layout),
 			Layout:        layout,
@@ -159,10 +150,6 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 			http.Error(w, "Error encoding status", http.StatusInternalServerError)
 			return
 		}
-		// Write the JSON status update to the response
-		//if status.Error != nil {
-		//	encounteredError = true
-		//}
 		_, err = fmt.Fprintf(w, "%s\n", data)
 		if err != nil {
 			log.Debug().Msg("Client connection lost.")
@@ -175,26 +162,20 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 		}
 	}
 
-	////temp/debug//////
-	//var resumeResult interface{} = map[string]struct{}{}
 	var resumeResult interface{} = <-finalResult
-	//var resumeResult = <- finalResult
-	err = nil
-	////end temp/debug//////
-
+	finalData, err := json.Marshal(resumeResult)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to extract resume contents")
-		http.Error(w, "Error processing resume", http.StatusInternalServerError)
+		log.Error().Err(err).Msg("Failed to encode JSON response")
+		finalData = []byte(`{"message":"processing error","error": true}`)
 		return
 	}
 
-	// Return the result as JSON response
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(resumeResult)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to encode JSON response")
-		http.Error(w, "Error encoding response", http.StatusInternalServerError)
-		return
+	// Send the final JSON result to the client
+	fmt.Fprintf(w, "%s\n", finalData)
+
+	// Flush final response to the client
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
 	}
 }
 

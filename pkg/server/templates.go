@@ -9,15 +9,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/xeipuuv/gojsonschema"
-	"sort"
-	"time"
-
-	//"github.com/xeipuuv/gojsonschema"
 	"google.golang.org/api/iterator"
 	"io"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 )
 
 const MAX_TEMPLATES_ALLOWED_PER_SSO = 100
@@ -211,6 +209,15 @@ func (s *pdfInspectorServer) getTemplateObjectName(r *http.Request) string {
 	//templateID := chi.URLParam(r, "templateID")
 	//objectName := chi.URLParam(r, "template")
 	objectName := r.URL.Query().Get("t")
+
+	// switched from path var to query param because some of my data has parenthesis chars in it. why should that matter? great question....
+	// https://github.com/go-chi/chi/issues/642 THIS BUG IS 3 YEARS OLD FFS.
+	// https://github.com/go-chi/chi/issues/641 has more info it seems (found in comments of https://git.frostfs.info/TrueCloudLab/frostfs-s3-gw/commit/2733ff9147477ce6b54ee2dad7c968ba5c04ec26 which implements a workaround as mentioned in issue 642 thread)
+	// https://github.com/go-chi/chi/issues/832 seems to be about the same thing
+	// any others? could go digging ... i kinda dgaf tho at the moment, actually irritated that there is such an old fundamental issue in a project that is being recommended to noobs.
+	// .....
+	// maybe if i can find the time and inspiration i'll go rip into it and create a PR to fix it.
+
 	templateObjectName := fmt.Sprintf("sso/%s/template/%s.json", userID, objectName)
 	templateObjectName = DirtyReplaceFunc(templateObjectName)
 	return templateObjectName
