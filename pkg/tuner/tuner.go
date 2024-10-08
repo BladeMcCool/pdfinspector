@@ -169,6 +169,7 @@ func (t *Tuner) takeNotesOnJD(job *job.Job) (string, error) {
 			},
 		},
 		"temperature": 0.7,
+		"user":        job.UserID,
 	}
 	api_request_pretty, err := serializeToJSON(apirequest)
 	writeToFile(api_request_pretty, 0, "jd_info_request_pretty", job.OutputDir)

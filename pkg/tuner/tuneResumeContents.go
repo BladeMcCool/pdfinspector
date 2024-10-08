@@ -96,6 +96,7 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 		},
 		//"max_tokens":  2000, //idk i had legit response go over 2000 because it was wordy. not sure that bug where it generated full stream of garbage happened again after putting on 'strict' tho. keep an eye on things.
 		"temperature": 0.7,
+		"user":        job.UserID,
 	}
 	messages := data["messages"].([]map[string]interface{}) //preserve orig
 
