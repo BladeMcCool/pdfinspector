@@ -186,7 +186,7 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 		if result.NumberOfPages == 0 {
 			return fmt.Errorf("no pages, idk just stop")
 		}
-		SendJobUpdate(updates, fmt.Sprintf("png inspection for attempt %d: %d pages, last page content ratio %.2f", i, result.NumberOfPages, result.LastPageContentRatio))
+		SendJobUpdate(updates, fmt.Sprintf("attempt %d png inspection, content ratio: %.2f, page count: %d", i, result.LastPageContentRatio, result.NumberOfPages))
 
 		tryNewPrompt := false
 		var tryPrompt string

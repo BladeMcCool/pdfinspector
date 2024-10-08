@@ -103,11 +103,13 @@
                   "description": "A description of the project and what was done including a mention of the technologies used."
                 },
                 "github": {
+                  "title": "GitHub",
                   "type": ["string","null"],
                   "default": null,
                   "description": "A link to the project's GitHub repository."
                 },
                 "location": {
+                  "title": "Location",
                   "type": "string",
                   "default": "",
                   "description": "The location from where the project was completed."
@@ -135,26 +137,31 @@
         "type": "object",
         "properties": {
           "institution": {
+            "title": "Institution Name",
             "type": "string",
             "default": "",
             "description": "The name of the educational institution."
           },
           "location": {
+            "title": "Institution Location",
             "type": ["string","null"],
             "default": "",
             "description": "The location of the educational institution."
           },
           "description": {
+            "title": "Description of Education",
             "type": "string",
             "default": "",
             "description": "A description of the education received, including the diploma or degree type."
           },
           "graduated": {
+            "title": "Graduation Date",
             "type": "string",
             "default": "",
             "description": "The date of graduation."
           },
           "notes": {
+            "title": "Notes on Education/Diploma",
             "type": ["array","null"],
             "items": {
               "type": "string"
