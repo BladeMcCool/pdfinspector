@@ -86,6 +86,7 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Group(func(protected chi.Router) {
 		protected.Use(s.AuthMiddleware)
 		protected.Post("/streamjob", s.streamJobHandler) // Keep the connection open while running the job and streaming updates
+		protected.Post("/extractresumedata/{layout}", s.extractResumeHandler)
 
 		//template CRUD
 		protected.Get("/templates", s.ListTemplatesHandler)
@@ -93,6 +94,7 @@ func (s *pdfInspectorServer) initRoutes() {
 		protected.Get("/templates/{template}", s.ReadTemplateHandler)
 		protected.Put("/templates/{template}", s.UpdateTemplateHandler)
 		protected.Delete("/templates/{template}", s.DeleteTemplateHandler)
+
 	})
 
 	s.router = router
@@ -218,6 +220,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 	// Marshal the final result to JSON
 	finalData, err := json.Marshal(finalResult)
 	if err != nil {
+		//todo ... hrm, is this even legit? we already sent status ok above right ? so ... we probably need to handle this differently if it somehow happened.
 		http.Error(w, "Error encoding final result", http.StatusInternalServerError)
 		return
 	}

@@ -58,26 +58,31 @@
         "type": "object",
         "properties": {
           "institution": {
+            "title": "Institution Name",
             "type": "string",
             "default": "",
             "description": "The name of the educational institution."
           },
           "location": {
+            "title": "Institution Location",
             "type": ["string","null"],
             "default": "",
             "description": "The location of the educational institution."
           },
           "description": {
+            "title": "Description of Education",
             "type": "string",
             "default": "",
             "description": "A description of the education received, including the diploma or degree type."
           },
           "graduated": {
+            "title": "Graduation Date",
             "type": "string",
             "default": "",
             "description": "The date of graduation."
           },
           "notes": {
+            "title": "Notes on Education/Diploma",
             "type": ["array","null"],
             "items": {
               "type": "string"
@@ -150,26 +155,31 @@
       }
     },
     "employment_history": {
+      "title": "Employment History",
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
           "title": {
+            "title": "Job Title",
             "type": "string",
             "default": "",
             "description": "The job title held at the company."
           },
           "company": {
+            "title": "Company Name",
             "type": "string",
             "default": "",
             "description": "The name of the company."
           },
           "location": {
+            "title": "Company Location",
             "type": "string",
             "default": "",
             "description": "The location of the company."
           },
           "daterange": {
+            "title": "Date Range",
             "type": "string",
             "default": "",
             "description": "The date range during which the candidate worked at the company."

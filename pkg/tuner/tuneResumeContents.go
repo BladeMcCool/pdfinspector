@@ -14,9 +14,8 @@ import (
 	"time"
 )
 
-var trueVal = true
+var TrueVal = true
 
-// func (t *Tuner) TuneResumeContents(input *job.Input, mainPrompt, baselineJSON, layout, style, outputDir string, fs filesystem.FileSystem, config *config.ServiceConfig, job *job.Job, updates chan job.JobStatus) error {
 func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) error {
 	job.Log().Info().Str("user_key", job.UserKey).Msgf("starting TuneResumeContents")
 	SendJobUpdate(updates, "getting any JD meta")
@@ -186,7 +185,7 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 		if result.NumberOfPages == 0 {
 			return fmt.Errorf("no pages, idk just stop")
 		}
-		SendJobUpdate(updates, fmt.Sprintf("png inspection for attempt %d: %#v", i, result))
+		SendJobUpdate(updates, fmt.Sprintf("attempt %d png inspection, content ratio: %.2f, page count: %d", i, result.LastPageContentRatio, result.NumberOfPages))
 
 		tryNewPrompt := false
 		var tryPrompt string
@@ -313,7 +312,7 @@ func SendJobErrorUpdate(updates chan job.JobStatus, message string) {
 	if updates == nil {
 		return
 	}
-	updates <- job.JobStatus{Message: message, Error: &trueVal}
+	updates <- job.JobStatus{Message: message, Error: &TrueVal}
 }
 
 func getBestAttemptIndex(results []inspectResult) int {
