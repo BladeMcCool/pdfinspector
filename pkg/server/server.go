@@ -94,6 +94,7 @@ func (s *pdfInspectorServer) initRoutes() {
 		protected.Get("/templates/{template}", s.ReadTemplateHandler)
 		protected.Put("/templates/{template}", s.UpdateTemplateHandler)
 		protected.Delete("/templates/{template}", s.DeleteTemplateHandler)
+
 	})
 
 	s.router = router

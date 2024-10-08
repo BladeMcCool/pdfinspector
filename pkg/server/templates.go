@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/xeipuuv/gojsonschema"
@@ -99,10 +98,11 @@ func (s *pdfInspectorServer) CreateTemplateHandler(w http.ResponseWriter, r *htt
 // ReadTemplateHandler handles reading a template.
 func (s *pdfInspectorServer) ReadTemplateHandler(w http.ResponseWriter, r *http.Request) {
 	templateObjectName := s.getTemplateObjectName(r)
-
+	log.Info().Msgf("ReadTemplateHandler for %s", templateObjectName)
 	// Step 2: Read the template from GCS.
 	templateData, err := s.readTemplateFromGCS(r.Context(), templateObjectName)
 	if err != nil {
+		log.Error().Msgf("ReadTemplateHandler error %s", err.Error())
 		http.Error(w, "Failed to read template", http.StatusInternalServerError)
 		return
 	}
@@ -200,10 +200,19 @@ func (s *pdfInspectorServer) validateResumeDataAgainstTemplateSchema(layout stri
 	return nil
 }
 
+func DirtyReplaceFunc(input string) string {
+	// Replace the characters that cause issues
+	input = strings.ReplaceAll(input, "%28", "(")
+	input = strings.ReplaceAll(input, "%29", ")")
+	return input
+}
 func (s *pdfInspectorServer) getTemplateObjectName(r *http.Request) string {
 	userID, _ := r.Context().Value("ssoSubject").(string)
 	//templateID := chi.URLParam(r, "templateID")
-	templateObjectName := fmt.Sprintf("sso/%s/template/%s.json", userID, chi.URLParam(r, "template"))
+	//objectName := chi.URLParam(r, "template")
+	objectName := r.URL.Query().Get("t")
+	templateObjectName := fmt.Sprintf("sso/%s/template/%s.json", userID, objectName)
+	templateObjectName = DirtyReplaceFunc(templateObjectName)
 	return templateObjectName
 }
 

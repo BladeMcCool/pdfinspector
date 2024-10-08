@@ -16,6 +16,10 @@ type JobStatus struct {
 	Message string `json:"message"`
 	Error   *bool  `json:"error,omitempty"`
 }
+type ExtractResult struct {
+	JobStatus
+	TemplateName *string `json:"template_name,omitempty"`
+}
 
 type JobResult struct {
 	Status  string `json:"status"`

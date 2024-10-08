@@ -167,8 +167,10 @@ func (t *Tuner) openAIResumeExtraction(fileContent []byte, layout string, output
 	}
 	if !exists {
 		//SendJobUpdate(updates, fmt.Sprintf("asking for an attempt %d", i))
+		//log.Info().Msg("making api request to openai ...")
 		output, err = t.makeAPIRequest(data, 0, "api_response_raw", outputDir)
 		if err != nil {
+			log.Error().Msgf("openai request had error: %s", err.Error())
 			return "", err
 		}
 	}
@@ -187,6 +189,7 @@ func (t *Tuner) openAIResumeExtraction(fileContent []byte, layout string, output
 	}
 
 	content := apiResponse.Choices[0].Message.Content
+	//write the response here so that if there is an error with it we can see what it was ??
 
 	err = validateJSON(content)
 	if err != nil {

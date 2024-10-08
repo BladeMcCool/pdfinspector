@@ -85,7 +85,10 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 	w.WriteHeader(http.StatusOK)
 
 	updates := make(chan job.JobStatus)
-	finalResult := make(chan job.JobStatus, 1)
+	finalResult := make(chan job.ExtractResult, 1)
+	//func sendFinalResult() {
+	//
+	//}
 	go func() {
 		//do the actual job and send updates.
 		defer close(updates)
@@ -98,14 +101,14 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 			updates <- job.JobStatus{Message: "Extracted resume data into JSON"}
 		} else {
 			log.Error().Msgf("error from extraction: %v", err)
-			finalResult <- job.JobStatus{Message: err.Error(), Error: &tuner.TrueVal}
+			finalResult <- job.ExtractResult{JobStatus: job.JobStatus{Message: err.Error(), Error: &tuner.TrueVal}}
 			return
 		}
 
 		var decodedResumeData interface{}
 		if err := json.Unmarshal([]byte(resumeResult.ResumeJSONRaw), &decodedResumeData); err != nil {
 			log.Error().Msgf("error from decoding resume json extraction: %v", err)
-			finalResult <- job.JobStatus{Message: err.Error(), Error: &tuner.TrueVal}
+			finalResult <- job.ExtractResult{JobStatus: job.JobStatus{Message: err.Error(), Error: &tuner.TrueVal}}
 			return
 		}
 
@@ -113,7 +116,7 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 		if err == nil {
 			updates <- job.JobStatus{Message: "ResumeData format appears to be valid"}
 		} else {
-			finalResult <- job.JobStatus{Message: err.Error(), Error: &tuner.TrueVal}
+			finalResult <- job.ExtractResult{JobStatus: job.JobStatus{Message: err.Error(), Error: &tuner.TrueVal}}
 			return
 		}
 
@@ -133,11 +136,16 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 			updates <- job.JobStatus{Message: "Saved template"}
 		} else {
 			log.Error().Msgf("error from saving template: %v", err)
-			finalResult <- job.JobStatus{Message: err.Error(), Error: &tuner.TrueVal}
+			finalResult <- job.ExtractResult{JobStatus: job.JobStatus{Message: err.Error(), Error: &tuner.TrueVal}}
 			return
 		}
 
-		finalResult <- job.JobStatus{Message: "Finished successfully - saved template "}
+		finalResult <- job.ExtractResult{
+			JobStatus: job.JobStatus{
+				Message: "Finished successfully - saved template",
+			},
+			TemplateName: &template.Name,
+		}
 	}()
 	for status := range updates {
 		if status.Error != nil {
