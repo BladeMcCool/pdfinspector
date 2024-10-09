@@ -34,6 +34,9 @@ RUN go mod download
 # Copy the entire project into the container
 COPY . .
 
+# Run tests to ensure they pass before building the application
+RUN go test ./...  # This will run all tests and abort the build if any tests fail
+
 # Set the working directory to the directory where your main.go file is located
 WORKDIR /app/cmd/pdfinspector
 

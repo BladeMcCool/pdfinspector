@@ -1,6 +1,7 @@
 package job
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -73,7 +74,7 @@ func (job *Job) PrepareDefault(jobId *string) {
 	}
 	job.AcceptableRatio = defaultAcceptableRatio
 	job.MaxAttempts = defaultMaxAttempts
-	job.Logger = job.setLogger()
+	job.Logger = getLogger(job.Id)
 }
 
 //	func (job *Job) OverrideJobId(jobId string) {
@@ -166,13 +167,38 @@ func ReadInput(dir string) (*Input, error) {
 	}, nil
 }
 
-func (job *Job) setLogger() *zerolog.Logger {
-	logger := log.With().
-		Str("job_id", job.Id).
-		Logger()
-	return &logger
-}
-
 func (job *Job) Log() *zerolog.Logger {
 	return job.Logger
+}
+
+type RenderJob struct {
+	BaselineJSON  string `json:"baseline_json"`  //the actual layout to use is a property of the baseline resumedata.
+	StyleOverride string `json:"style_override"` //eg fluffy
+	Id            string
+	Layout        string `json:"layout""`
+
+	OutputDir string
+	UserKey   string
+	UserID    string //like sso subject id, so we can put generation ids into a bucket path for them to recall later.
+
+	Logger *zerolog.Logger
+}
+
+func (job *RenderJob) Log() *zerolog.Logger {
+	return job.Logger
+}
+
+func (job *RenderJob) PrepareDefault(jobId *string, ctx context.Context) {
+	job.Id = uuid.New().String()
+	job.Logger = getLogger(job.Id)
+
+	userID, _ := ctx.Value("ssoSubject").(string)
+	job.UserID = userID
+	job.Log().Trace().Msgf("PrepareDefault: sso subject userId believed to be %s", userID)
+}
+func getLogger(jobId string) *zerolog.Logger {
+	logger := log.With().
+		Str("job_id", jobId).
+		Logger()
+	return &logger
 }

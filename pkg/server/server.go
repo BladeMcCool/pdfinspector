@@ -20,6 +20,7 @@ import (
 	"pdfinspector/pkg/job"
 	"pdfinspector/pkg/jobrunner"
 	"pdfinspector/pkg/tuner"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,6 +80,11 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Get("/schema/{layout}", s.GetJsonSchemaHandler)
 	router.Get("/getapitoken", s.GetAPIToken)
 	router.Get("/getusergenids", s.GetUserGenIDsHandler)
+	router.Get("/getapitoken", s.GetAPIToken)
+
+	router.Get("/getgenerationjson/{genId}", s.GetGenerationJSON)
+
+	//stripe
 	//router.Post("/create-payment-intent", s.handleCreatePaymentIntent)
 	router.Post("/stripe-webhook", s.handleStripeWebhook)
 
@@ -87,6 +93,7 @@ func (s *pdfInspectorServer) initRoutes() {
 		protected.Use(s.AuthMiddleware)
 		protected.Post("/streamjob", s.streamJobHandler) // Keep the connection open while running the job and streaming updates
 		protected.Post("/extractresumedata/{layout}", s.extractResumeHandler)
+		protected.Post("/streamrender", s.streamRenderHandler)
 
 		//template CRUD
 		protected.Get("/templates", s.ListTemplatesHandler)
@@ -222,6 +229,79 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		//todo ... hrm, is this even legit? we already sent status ok above right ? so ... we probably need to handle this differently if it somehow happened.
 		http.Error(w, "Error encoding final result", http.StatusInternalServerError)
+		return
+	}
+
+	// Send the final JSON result to the client
+	fmt.Fprintf(w, "%s\n", finalData)
+
+	// Flush final response to the client
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (s *pdfInspectorServer) streamRenderHandler(w http.ResponseWriter, r *http.Request) {
+	var inputJob job.RenderJob
+	if err := json.NewDecoder(r.Body).Decode(&inputJob); err != nil {
+		http.Error(w, "Invalid JSON input", http.StatusBadRequest)
+		return
+	}
+	inputJob.PrepareDefault(nil, r.Context())
+
+	// Set headers for streaming response
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.WriteHeader(http.StatusOK)
+
+	// Create a channel to communicate inputJob status updates
+	// Stream status updates to the client
+	var encounteredError = false
+	for status := range s.jobRunner.RunRenderStreaming(&inputJob) {
+		// Create a JobStatus struct with the status message
+
+		// Marshal the status update to JSON
+		data, err := json.Marshal(status)
+		if err != nil {
+			http.Error(w, "Error encoding status", http.StatusInternalServerError)
+			return
+		}
+
+		// Write the JSON status update to the response
+		if status.Error != nil {
+			encounteredError = true
+		}
+		_, err = fmt.Fprintf(w, "%s\n", data)
+		if err != nil {
+			log.Debug().Msg("Client connection lost.")
+			return
+		}
+
+		// Flush the response writer to ensure the data is sent immediately
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	var finalResult interface{}
+	if encounteredError {
+		// Final result after inputJob non completion
+		finalResult = job.JobResult{
+			Status:  "Failed",
+			Details: "The inputJob failed with an error.",
+		}
+	} else {
+		// Final result after inputJob completion
+		finalResult = job.JobResult{
+			Status:  "Completed",
+			Details: "The inputJob was successfully completed.",
+		}
+	}
+
+	finalData, err := json.Marshal(finalResult)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to encode JSON response")
+		finalData = []byte(`{"message":"processing error","error": true}`)
 		return
 	}
 
@@ -500,14 +580,14 @@ func (s *pdfInspectorServer) GetUserGenIDsHandler(w http.ResponseWriter, r *http
 	}
 
 	// Call the function to list objects under the user's gen path
-	objectInfos, err := s.ListObjectsWithPrefix(r.Context(), userID)
+	objectInfos, err := s.ListSSOUserGenerations(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "Failed to list objects: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	//todo sort them.
 	sorted, err := sortAndSerializeGenerations(objectInfos)
+
 	if err != nil {
 		http.Error(w, "Failed to sort/serialize objects: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -516,6 +596,37 @@ func (s *pdfInspectorServer) GetUserGenIDsHandler(w http.ResponseWriter, r *http
 	// Respond with the list of object names in JSON format
 	w.Header().Set("Content-Type", "application/json")
 	_, err = w.Write([]byte(sorted))
+	if err != nil {
+		http.Error(w, "Failed to write output to client: "+err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *pdfInspectorServer) GetGenerationJSON(w http.ResponseWriter, r *http.Request) {
+	// Extract the userId from the request context - it would have come from ripping into credential header of one sort or another.
+	userID, ok := r.Context().Value("ssoSubject").(string)
+	if !ok || userID == "" {
+		http.Error(w, "userId is required", http.StatusBadRequest)
+		return
+	}
+
+	// Call the function to list objects under the user's gen path
+	objectInfos, err := s.GetOutputGenerationsJSON(r.Context(), chi.URLParam(r, "genId"))
+	if err != nil {
+		http.Error(w, "Failed to list objects: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	sort.Slice(objectInfos, func(i, j int) bool {
+		return objectInfos[i].Created.After(objectInfos[j].Created)
+	})
+	jsonData, err := json.Marshal(objectInfos)
+	if err != nil {
+		http.Error(w, "failed to marshal to json", http.StatusInternalServerError)
+		return
+	}
+
+	// Respond with the list of object names in JSON format
+	w.Header().Set("Content-Type", "application/json")
+	_, err = w.Write(jsonData)
 	if err != nil {
 		http.Error(w, "Failed to write output to client: "+err.Error(), http.StatusInternalServerError)
 	}

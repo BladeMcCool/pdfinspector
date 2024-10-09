@@ -292,6 +292,7 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 		}
 	}
 
+	//so long as there is a sso UserID attached to the job, make a note of it with an empty file under a special path (of which we can list prefixes later to find all our generations for that sso id)
 	if job.UserID != "" {
 		genObjPath := fmt.Sprintf("sso/%s/gen/%s", job.UserID, job.Id)
 		job.Log().Info().Msgf("should note sso ownership at %s", genObjPath)
