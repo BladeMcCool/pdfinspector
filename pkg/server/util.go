@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/api/iterator"
 	"net/http"
 	"sort"
@@ -15,14 +16,20 @@ import (
 )
 
 type generationInfo struct {
-	Name    string
-	Created time.Time
+	Name    string    `json:"name"`
+	Created time.Time `json:"created"`
 }
 
 // Custom JSON struct to format the date as yyyy-mm-dd hh:mm
 type generationInfoFormatted struct {
 	Name    string `json:"name"`
 	Created string `json:"created"`
+}
+
+type attemptInfo struct {
+	Name    string
+	Created time.Time
+	Data    string
 }
 
 // CreateCustomToken creates a JWT with 'sub' and 'apikey'
@@ -82,8 +89,8 @@ func (s *pdfInspectorServer) extractBearerToken(r *http.Request) (string, error)
 	return tokenParts[1], nil
 }
 
-// ListObjectsWithPrefix lists all objects under the given prefix in a GCS bucket.
-func (s *pdfInspectorServer) ListObjectsWithPrefix(ctx context.Context, userId string) ([]generationInfo, error) {
+// ListSSOUserGenerations lists all objects under the given prefix in a GCS bucket.
+func (s *pdfInspectorServer) ListSSOUserGenerations(ctx context.Context, userId string) ([]generationInfo, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
@@ -118,6 +125,50 @@ func (s *pdfInspectorServer) ListObjectsWithPrefix(ctx context.Context, userId s
 	return genIds, nil
 }
 
+// ListSSOUserGenerations lists all objects under the given prefix in a GCS bucket.
+func (s *pdfInspectorServer) GetOutputGenerationsJSON(ctx context.Context, genId string) ([]attemptInfo, error) {
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCS client: %w", err)
+	}
+	defer client.Close()
+
+	bucket := client.Bucket(s.config.GcsBucket)
+	prefix := fmt.Sprintf("outputs/%s/attempt", genId)
+	log.Trace().Msgf("GetOutputGenerationsJSON for prefix %s", prefix)
+	// Query to list objects with the specified prefix
+	query := &storage.Query{Prefix: prefix}
+	it := bucket.Objects(ctx, query)
+
+	var attempts []attemptInfo
+	for {
+		objAttr, err := it.Next()
+		if errors.Is(err, iterator.Done) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("error retrieving object attrs: %w", err)
+		}
+
+		// Append the object name to the slice
+		// Extract the genId by stripping the prefix
+		attempt := strings.TrimPrefix(objAttr.Name, prefix)
+		contents, err := s.readTemplateFromGCS(ctx, objAttr.Name)
+		log.Info().Msgf("read some contents: %s", contents)
+		if err != nil {
+			if err != nil {
+				return nil, fmt.Errorf("error retrieving object: %w", err)
+			}
+		}
+		attempts = append(attempts, attemptInfo{
+			Name:    attempt,
+			Created: objAttr.Created,
+			Data:    string(contents),
+		})
+	}
+	return attempts, nil
+}
+
 // Sort by date descending and serialize to JSON with custom date format
 func sortAndSerializeGenerations(generations []generationInfo) (string, error) {
 	// Sort the slice by Created in descending order
@@ -125,19 +176,22 @@ func sortAndSerializeGenerations(generations []generationInfo) (string, error) {
 		return generations[i].Created.After(generations[j].Created)
 	})
 
-	// Create a new slice for the formatted results
-	var formattedGenerations []generationInfoFormatted
+	//// Create a new slice for the formatted results
+	//var formattedGenerations []generationInfoFormatted
+	//
+	//// Format the Created time and copy the data to the formatted slice
+	//for _, gen := range generations {
+	//	formattedGenerations = append(formattedGenerations, generationInfoFormatted{
+	//		Name:    gen.Name,
+	//		Created: gen.Created.Format("2006-01-02 15:04"), // Custom date format yyyy-mm-dd hh:mm
+	//	})
+	//}
+	//
+	//// Serialize to JSON
+	//jsonData, err := json.Marshal(formattedGenerations)
 
-	// Format the Created time and copy the data to the formatted slice
-	for _, gen := range generations {
-		formattedGenerations = append(formattedGenerations, generationInfoFormatted{
-			Name:    gen.Name,
-			Created: gen.Created.Format("2006-01-02 15:04"), // Custom date format yyyy-mm-dd hh:mm
-		})
-	}
+	jsonData, err := json.Marshal(generations)
 
-	// Serialize to JSON
-	jsonData, err := json.Marshal(formattedGenerations)
 	if err != nil {
 		return "", fmt.Errorf("failed to serialize to JSON: %w", err)
 	}
