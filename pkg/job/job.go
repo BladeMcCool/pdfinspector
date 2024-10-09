@@ -167,13 +167,6 @@ func ReadInput(dir string) (*Input, error) {
 	}, nil
 }
 
-//func (job *Job) setLogger() *zerolog.Logger {
-//	logger := log.With().
-//		Str("job_id", job.Id).
-//		Logger()
-//	return &logger
-//}
-
 func (job *Job) Log() *zerolog.Logger {
 	return job.Logger
 }

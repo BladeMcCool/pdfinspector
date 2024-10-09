@@ -30,23 +30,11 @@ type Template struct {
 
 // generationInfo holds template metadata.
 type templateInfo struct {
-	UUID string `json:"uuid"`
-	Name string `json:"name"`
-	//Created JSONTimePretty `json:"created"`
-	//Updated JSONTimePretty `json:"updated"`
+	UUID    string    `json:"uuid"`
+	Name    string    `json:"name"`
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
 }
-
-//type JSONTime time.Time
-//type JSONTimePretty time.Time
-
-//func (t JSONTime) MarshalJSON() ([]byte, error) {
-//	return []byte(fmt.Sprintf("\"%s\"", time.Time(t).Format("2006-01-02T15:04:05Z"))), nil
-//}
-//func (t JSONTimePretty) MarshalJSON() ([]byte, error) {
-//	return []byte(fmt.Sprintf("\"%s\"", time.Time(t).Format("2006 Jan 2, 3:04pm"))), nil
-//}
 
 // CreateTemplateHandler handles the creation of a new template.
 func (s *pdfInspectorServer) CreateTemplateHandler(w http.ResponseWriter, r *http.Request) {
@@ -359,16 +347,13 @@ func (s *pdfInspectorServer) listUserTemplates(ctx context.Context, userID strin
 		fileName = strings.TrimSuffix(fileName, filepath.Ext(fileName))
 
 		templates = append(templates, templateInfo{
-			UUID: fileName[:uuidLen],
-			Name: fileName[uuidLen+1:],
-			//Created: JSONTimePretty(objAttr.Created),
-			//Updated: JSONTimePretty(objAttr.Updated),
+			UUID:    fileName[:uuidLen],
+			Name:    fileName[uuidLen+1:],
 			Created: objAttr.Created,
 			Updated: objAttr.Updated,
 		})
 	}
 	sort.Slice(templates, func(i, j int) bool {
-		//return time.Time(templates[i].Updated).After(time.Time(templates[j].Updated))
 		return templates[i].Updated.After(templates[j].Updated)
 	})
 

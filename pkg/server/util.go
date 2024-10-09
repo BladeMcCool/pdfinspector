@@ -176,22 +176,7 @@ func sortAndSerializeGenerations(generations []generationInfo) (string, error) {
 		return generations[i].Created.After(generations[j].Created)
 	})
 
-	//// Create a new slice for the formatted results
-	//var formattedGenerations []generationInfoFormatted
-	//
-	//// Format the Created time and copy the data to the formatted slice
-	//for _, gen := range generations {
-	//	formattedGenerations = append(formattedGenerations, generationInfoFormatted{
-	//		Name:    gen.Name,
-	//		Created: gen.Created.Format("2006-01-02 15:04"), // Custom date format yyyy-mm-dd hh:mm
-	//	})
-	//}
-	//
-	//// Serialize to JSON
-	//jsonData, err := json.Marshal(formattedGenerations)
-
 	jsonData, err := json.Marshal(generations)
-
 	if err != nil {
 		return "", fmt.Errorf("failed to serialize to JSON: %w", err)
 	}
