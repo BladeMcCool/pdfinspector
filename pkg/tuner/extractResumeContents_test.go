@@ -2,6 +2,7 @@ package tuner
 
 import (
 	"encoding/json"
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -95,4 +96,62 @@ func TestGuessCandidateName(t *testing.T) {
 			t.Errorf("Expected name %q, but got %q", tc.expectedName, name)
 		}
 	}
+}
+
+func TestGetBestAttemptExtractPicksBest(t *testing.T) {
+	attempts := []extractAttempt{{
+		lengthRatioRelatedToInput: 0.8,
+	}, {
+		lengthRatioRelatedToInput: 0.9,
+	}, {
+		lengthRatioRelatedToInput: 1.0,
+	}, {
+		lengthRatioRelatedToInput: 1.1,
+	}, {
+		lengthRatioRelatedToInput: 1.6,
+	}}
+	best := getBestAttemptedExtract(attempts)
+	assert.Equal(t, 1.0, best.lengthRatioRelatedToInput)
+}
+
+func TestGetBestAttemptExtractPicksLeastBadFromAllLong(t *testing.T) {
+	attempts := []extractAttempt{{
+		lengthRatioRelatedToInput: 0.2,
+	}, {
+		lengthRatioRelatedToInput: 1.3,
+	}, {
+		lengthRatioRelatedToInput: 1.4,
+	}, {
+		lengthRatioRelatedToInput: 5.5,
+	}}
+	best := getBestAttemptedExtract(attempts)
+	assert.Equal(t, 1.3, best.lengthRatioRelatedToInput)
+}
+
+func TestGetBestAttemptExtractPicksLeastBadFromAllShort(t *testing.T) {
+	attempts := []extractAttempt{{
+		lengthRatioRelatedToInput: 0.2,
+	}, {
+		lengthRatioRelatedToInput: 0.3,
+	}, {
+		lengthRatioRelatedToInput: 0.4,
+	}}
+	best := getBestAttemptedExtract(attempts)
+	assert.Equal(t, 0.4, best.lengthRatioRelatedToInput)
+}
+
+func TestGetBestAttemptExtractPicksLeastBadFromCloseToTarget(t *testing.T) {
+	attempts := []extractAttempt{{
+		lengthRatioRelatedToInput: 0.7,
+	}, {
+		lengthRatioRelatedToInput: 0.8,
+	}, {
+		lengthRatioRelatedToInput: 1.5,
+	}, {
+		lengthRatioRelatedToInput: 0.3,
+	}, {
+		lengthRatioRelatedToInput: 1.4,
+	}}
+	best := getBestAttemptedExtract(attempts)
+	assert.Equal(t, 0.8, best.lengthRatioRelatedToInput)
 }

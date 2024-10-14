@@ -9,7 +9,11 @@ import (
 	"pdfinspector/pkg/config"
 	"pdfinspector/pkg/filesystem"
 	"pdfinspector/pkg/job"
+	"regexp"
+	"strings"
 )
+
+var spaceStripRe = regexp.MustCompile(`\s+`)
 
 // validateJSON checks if a string contains valid JSON
 func validateJSON(data string) error {
@@ -167,4 +171,35 @@ func insertLayout(content string, layout string, style string) (string, error) {
 
 	// Step 4: Return the updated JSON string
 	return string(updatedContent), nil
+}
+
+func ExtractText(data interface{}) string {
+	var texts []string
+	var extract func(interface{})
+	extract = func(d interface{}) {
+		switch v := d.(type) {
+		case string:
+			// Append the string value to the texts slice
+			texts = append(texts, v)
+		case []interface{}:
+			// Recursively process each item in the array
+			for _, item := range v {
+				extract(item)
+			}
+		case map[string]interface{}:
+			// Recursively process each value in the object
+			for _, value := range v {
+				extract(value)
+			}
+			// Optional: Handle numbers, booleans, and nulls if needed
+		}
+	}
+	extract(data)
+	// Join all collected strings with a space separator
+	return strings.Join(texts, " ")
+}
+
+func stripStringOfWhiteSpace(in string) string {
+	//all instances of whitespace (spaces, tabs etc, should we use a strings.Replace or a regexp?
+	return spaceStripRe.ReplaceAllString(in, "")
 }

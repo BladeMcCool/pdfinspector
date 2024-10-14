@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"pdfinspector/pkg/tuner"
 	"sort"
 	"strings"
 	"time"
@@ -54,6 +55,7 @@ func (s *pdfInspectorServer) CreateTemplateHandler(w http.ResponseWriter, r *htt
 
 	template, err := s.getValidatedTemplateFromRequest(w, r)
 	if err != nil {
+		http.Error(w, "Could not validate Template", http.StatusBadRequest)
 		return
 	}
 
@@ -162,7 +164,7 @@ func (s *pdfInspectorServer) getValidatedTemplateFromRequest(w http.ResponseWrit
 	}
 
 	// Step 2: Validate 'resumedata' against the schema.
-	err := s.validateResumeDataAgainstTemplateSchema(template.Layout, template.ResumeData)
+	err := s.validateResumeDataAgainstTemplateSchema(template.Layout, template.ResumeData, true)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Schema validation error: %s", err.Error()), http.StatusInternalServerError)
 		return nil, err
@@ -170,21 +172,30 @@ func (s *pdfInspectorServer) getValidatedTemplateFromRequest(w http.ResponseWrit
 	return &template, nil
 }
 
-func (s *pdfInspectorServer) validateResumeDataAgainstTemplateSchema(layout string, resumeData interface{}) error {
+func (s *pdfInspectorServer) validateResumeDataAgainstTemplateSchema(layout string, resumeData interface{}, allowRendererFields bool) error {
 	//Validate 'resumedata' against the schema.
-	schemaInterface, err := s.jobRunner.Tuner.GetExpectedResponseJsonSchema(layout)
+	var schemaInterface interface{}
+	var err error
+	if allowRendererFields {
+		schemaInterface, err = s.jobRunner.Tuner.GetRendererJsonSchema(layout)
+	} else {
+		schemaInterface, err = s.jobRunner.Tuner.GetExpectedResponseJsonSchema(layout)
+	}
 	if err != nil {
 		return err
 	}
 	schemaLoader := gojsonschema.NewGoLoader(schemaInterface)
 	documentLoader := gojsonschema.NewGoLoader(resumeData)
-
+	log.Trace().Msgf("here with schema: %#v", schemaInterface)
+	log.Trace().Msgf("here with resumeData: %#v", resumeData)
 	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
+	log.Trace().Msgf("validateResumeDataAgainstTemplateSchema err? %#v", err)
+	log.Trace().Msgf("validateResumeDataAgainstTemplateSchema result? %#v", result)
 	if err != nil {
 		return err
 	}
 	if !result.Valid() {
-		return err
+		return tuner.NewSchemaValidationError(result.Errors())
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/xeipuuv/gojsonschema"
 	"io"
 
 	"github.com/rs/zerolog/log"
@@ -18,6 +19,38 @@ import (
 	"pdfinspector/pkg/job"
 	"strings"
 )
+
+// Custom error type that holds a list of validation errors
+type SchemaValidationError struct {
+	ValidationErrors []gojsonschema.ResultError
+}
+
+// Implement the error interface by defining the Error() method
+func (ve SchemaValidationError) Error() string {
+	if len(ve.ValidationErrors) == 0 {
+		return "no validation errors"
+	}
+
+	// Format all validation errors into a single string
+	var errMsg string
+	for _, err := range ve.ValidationErrors {
+		errMsg += fmt.Sprintf("- %s\n", err.String())
+	}
+	return fmt.Sprintf("validation failed with the following errors:\n%s", errMsg)
+}
+
+// Optional: Implement the Is() method to allow errors.Is to check this type
+func (ve SchemaValidationError) Is(target error) bool {
+	_, ok := target.(*SchemaValidationError)
+	return ok
+}
+
+// Constructor function for creating a new SchemaValidationError
+func NewSchemaValidationError(errors []gojsonschema.ResultError) error {
+	return &SchemaValidationError{
+		ValidationErrors: errors,
+	}
+}
 
 type jdMeta struct {
 	CompanyName string   `json:"company_name" validate:"required"`
@@ -246,6 +279,22 @@ func (t *Tuner) GetExpectedResponseJsonSchema(layout string) (interface{}, error
 	return stripped, nil
 }
 
+func (t *Tuner) GetRendererJsonSchema(layout string) (interface{}, error) {
+	//which is essentially response schema format with a few other fields that only the renderer (ReactResume project) will use.
+
+	completeSchema, err := t.readAndDecodeJsonSchema(layout)
+	if err != nil {
+		return nil, err
+	}
+	stripped := config.ExtractRelevantSchema(completeSchema)
+	enhanced, err := config.EnhanceSchemaWithRendererFields(layout, stripped)
+	if err != nil {
+		return nil, err
+	}
+
+	return enhanced, nil
+}
+
 func (t *Tuner) GetCompleteJsonSchema(layout string) (interface{}, error) {
 	completeSchema, err := t.readAndDecodeJsonSchema(layout)
 	if err != nil {
@@ -256,8 +305,13 @@ func (t *Tuner) GetCompleteJsonSchema(layout string) (interface{}, error) {
 
 func (t *Tuner) readAndDecodeJsonSchema(layout string) (interface{}, error) {
 	//todo cache this stuff in a map - there will only ever be a few of these, its going to be reading it from the filesystem every time!
-	expectResponseFilePath := filepath.Join("response_templates", fmt.Sprintf("%s-schema.json", layout))
+	expectResponseFilePath := filepath.Join(t.config.SchemasPath, fmt.Sprintf("%s-schema.json", layout))
 	// Read expect_response.json
+	//nowDir, err := os.Getwd()
+	//expectResponseFilePath := filepath.Join(nowDir, "response_templates", fmt.Sprintf("%s-schema.json", layout))
+	//log.Trace().Msgf("nowDir in the code: %s", nowDir)
+	log.Trace().Msgf("readAndDecodeJsonSchema, expectResponseFilePath is: %s", expectResponseFilePath)
+
 	expectResponseContent, err := os.ReadFile(expectResponseFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read expect_response.json: %v", err)
