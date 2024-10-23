@@ -1,5 +1,8 @@
 //go:build e2e
 
+// ///////
+// And remember to set a OPENAI_API_KEY env var to something with api credit or stuff won't work.
+// ///////
 package tuner
 
 import (
@@ -67,32 +70,6 @@ func cleanPriorTestOutput() {
 		}
 	}
 }
-
-//func ExtractText(data interface{}) string {
-//	var texts []string
-//	var extract func(interface{})
-//	extract = func(d interface{}) {
-//		switch v := d.(type) {
-//		case string:
-//			// Append the string value to the texts slice
-//			texts = append(texts, v)
-//		case []interface{}:
-//			// Recursively process each item in the array
-//			for _, item := range v {
-//				extract(item)
-//			}
-//		case map[string]interface{}:
-//			// Recursively process each value in the object
-//			for _, value := range v {
-//				extract(value)
-//			}
-//			// Optional: Handle numbers, booleans, and nulls if needed
-//		}
-//	}
-//	extract(data)
-//	// Join all collected strings with a space separator
-//	return strings.Join(texts, " ")
-//}
 
 func TestOpenAIResumeExtractProducesRoughlyTheCorrectLengthImportedJSON(t *testing.T) {
 	t.Log("should only see this for e2e enabled")
