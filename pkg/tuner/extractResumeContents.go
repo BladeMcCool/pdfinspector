@@ -288,65 +288,6 @@ func (t *Tuner) openAIResumeExtraction(job *ResumeExtractionJob, outputDir strin
 	return getBestAttemptedExtract(attemptsOutput).content, nil
 }
 
-//
-//func getBestAttemptedExtract(attemptsOutput []extractAttempt) extractAttempt {
-//	//idk i guess the one with the most that didnt go over allowed is the best?
-//	bestIndex := 0
-//	worstIndex := 0
-//	foundABest := false
-//	foundAWorst := false
-//	bestAttemptRatio := attemptsOutput[bestIndex].lengthRatioRelatedToInput
-//	worstAttemptRatio := attemptsOutput[bestIndex].lengthRatioRelatedToInput
-//	for i, v := range attemptsOutput {
-//		if v.lengthRatioRelatedToInput > bestAttemptRatio {
-//			if v.lengthRatioRelatedToInput < targetExtractedVsInputLengthMax {
-//				bestIndex = i
-//				foundABest = true
-//				bestAttemptRatio = v.lengthRatioRelatedToInput
-//			}
-//		}
-//		if v.lengthRatioRelatedToInput < worstAttemptRatio {
-//			if v.lengthRatioRelatedToInput > targetExtractedVsInputLengthMin {
-//				worstIndex = i
-//				foundAWorst = true
-//				worstAttemptRatio = v.lengthRatioRelatedToInput
-//			}
-//		}
-//	}
-//	if foundABest || !foundAWorst {
-//		//so if we found a best thing or didnt find a worst thing (in which case the bestindex should still just be 0)
-//		return attemptsOutput[bestIndex]
-//	}
-//	//being here means we didnt find a best but we did find a worst.
-//	//and if we didnt find a best then the 'worst' one should be the least overlength one.
-//	return attemptsOutput[worstIndex]
-//}
-
-// getBestAttemptedExtract finds the extract attempt within the acceptable range (MIN_ACCEPTABLE_RATIO to MAX_ACCEPTABLE_RATIO),
-// and if none are within the range, it finds the closest one to 1.0 (favoring longer over shorter if equally close).
-//func getBestAttemptedExtract(attempts []extractAttempt) extractAttempt {
-//	if len(attempts) == 0 {
-//		return extractAttempt{} // handle empty input case
-//	}
-//
-//	best := attempts[0]
-//	for _, attempt := range attempts {
-//		// Check if it's within the acceptable range first
-//		if isWithinAcceptableRange(attempt) && (!isWithinAcceptableRange(best) || isBetterAttempt(attempt, best)) {
-//			best = attempt
-//		} else if !isWithinAcceptableRange(best) && isBetterAttempt(attempt, best) {
-//			// If no attempt is within range, pick the closest to 1.0
-//			best = attempt
-//		}
-//	}
-//	return best
-//}
-//
-//// isWithinAcceptableRange checks if the length ratio is within the predefined acceptable range
-//func isWithinAcceptableRange(attempt extractAttempt) bool {
-//	return attempt.lengthRatioRelatedToInput >= MIN_ACCEPTABLE_RATIO && attempt.lengthRatioRelatedToInput <= MAX_ACCEPTABLE_RATIO
-//}
-
 func getBestAttemptedExtract(attempts []extractAttempt) extractAttempt {
 	if len(attempts) == 0 {
 		return extractAttempt{} // handle empty input case

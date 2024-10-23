@@ -230,12 +230,8 @@ var testServer *pdfInspectorServer
 func TestMain(m *testing.M) {
 	// Set up the server once for all tests
 	testServer = NewPdfInspectorServer(&config.ServiceConfig{SchemasPath: getResponseTemplatesDir()})
+	// Run all tests
 	m.Run()
-	//// Run all tests
-	//exitVal := m.Run()
-	//
-	//// Clean up resources here if necessary
-	//os.Exit(exitVal)
 }
 
 func TestValidateInvalidResumeDataAgainstTemplateSchema(t *testing.T) {
@@ -259,10 +255,6 @@ func TestValidateInvalidResumeDataAgainstTemplateSchema(t *testing.T) {
 }
 
 func TestValidateResumeDataWithoutRendererFieldsAgainstResponseTemplateSchema(t *testing.T) {
-	// Instantiate pdfInspectorServer with the mock jobRunner
-	//server := NewPdfInspectorServer(&config.ServiceConfig{SchemasPath: getResponseTemplatesDir()})
-	// Hardcoded resume data as a string (placeholder content)
-
 	// Deserialize the hardcoded resume data into an interface
 	var resumeData interface{}
 	err := json.Unmarshal([]byte(validChronoResumeDataJSON), &resumeData)
@@ -274,10 +266,6 @@ func TestValidateResumeDataWithoutRendererFieldsAgainstResponseTemplateSchema(t 
 }
 
 func TestValidateChronoResumeDataWithRendererFieldsAgainstRendererTemplateSchema(t *testing.T) {
-	// Instantiate pdfInspectorServer with the mock jobRunner
-	//server := NewPdfInspectorServer(&config.ServiceConfig{SchemasPath: getResponseTemplatesDir()})
-	// Hardcoded resume data as a string (placeholder content)
-
 	// Deserialize the hardcoded resume data into an interface
 	var resumeData interface{}
 	err := json.Unmarshal([]byte(validChronoResumeDataWithRendererFieldsJSON), &resumeData)
@@ -292,10 +280,6 @@ func TestValidateChronoResumeDataWithRendererFieldsAgainstRendererTemplateSchema
 }
 
 func TestValidateFunctionalResumeDataWithRendererFieldsAgainstRendererTemplateSchema(t *testing.T) {
-	// Instantiate pdfInspectorServer with the mock jobRunner
-	//server := NewPdfInspectorServer(&config.ServiceConfig{SchemasPath: getResponseTemplatesDir()})
-	// Hardcoded resume data as a string (placeholder content)
-
 	// Deserialize the hardcoded resume data into an interface
 	var resumeData interface{}
 	err := json.Unmarshal([]byte(validFunctionalResumeDataWithRendererFieldsJSON), &resumeData)

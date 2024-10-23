@@ -20,6 +20,10 @@ func hasKey(m map[string]interface{}, key string) bool {
 }
 
 // Recursive function to process a JSON schema and extract relevant information
+//
+//	iirc the reason i am doing this is so that the "title" and "default" schema fields don't go into the
+//	request to openAI api, but i want to define them in the schema files that we will also use to load the react-json-schema-form
+//	on the front-end.
 func ExtractRelevantSchema(input interface{}) map[string]interface{} {
 	// Attempt to type assert input as a map[string]interface{}
 	schemaMap, ok := input.(map[string]interface{})

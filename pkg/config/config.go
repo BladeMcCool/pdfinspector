@@ -45,13 +45,11 @@ func InitLogging() int {
 
 func GetResponseTemplatesDir() string {
 	// Get the path of the current executable
-	//exePath, err := os.Executable()
 	originalDir, err := os.Getwd()
 
 	if err != nil {
 		panic("could not determine own path via os.Executable")
 	}
-	//schemasDir := filepath.Join(filepath.Dir(exePath), "response_templates")
 	schemasDir := filepath.Join(originalDir, "response_templates")
 	log.Trace().Msgf("GetResponseTemplatesDir determined schemasDir: %s", schemasDir)
 	return schemasDir

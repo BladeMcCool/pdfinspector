@@ -307,9 +307,6 @@ func (t *Tuner) readAndDecodeJsonSchema(layout string) (interface{}, error) {
 	//todo cache this stuff in a map - there will only ever be a few of these, its going to be reading it from the filesystem every time!
 	expectResponseFilePath := filepath.Join(t.config.SchemasPath, fmt.Sprintf("%s-schema.json", layout))
 	// Read expect_response.json
-	//nowDir, err := os.Getwd()
-	//expectResponseFilePath := filepath.Join(nowDir, "response_templates", fmt.Sprintf("%s-schema.json", layout))
-	//log.Trace().Msgf("nowDir in the code: %s", nowDir)
 	log.Trace().Msgf("readAndDecodeJsonSchema, expectResponseFilePath is: %s", expectResponseFilePath)
 
 	expectResponseContent, err := os.ReadFile(expectResponseFilePath)
