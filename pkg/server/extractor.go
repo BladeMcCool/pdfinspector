@@ -111,7 +111,7 @@ func (s *pdfInspectorServer) extractResumeHandler(w http.ResponseWriter, r *http
 			return
 		}
 
-		err = s.validateResumeDataAgainstTemplateSchema(layout, decodedResumeData)
+		err = s.validateResumeDataAgainstTemplateSchema(layout, decodedResumeData, false)
 		if err == nil {
 			updates <- job.JobStatus{Message: "ResumeData format appears to be valid"}
 		} else {

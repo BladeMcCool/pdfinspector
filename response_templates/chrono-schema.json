@@ -113,15 +113,9 @@
                   "type": "string",
                   "default": "",
                   "description": "The location from where the project was completed."
-                },
-                "jobtitle": {
-                  "title": "Job Title",
-                  "type": "string",
-                  "default": "",
-                  "description": "The job title held while working on the project."
                 }
               },
-              "required": ["desc","github","location","jobtitle"],
+              "required": ["desc","github","location"],
               "additionalProperties": false
             }
           }

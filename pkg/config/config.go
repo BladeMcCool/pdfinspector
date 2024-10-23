@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -33,12 +34,25 @@ type ServiceConfig struct {
 	JwtSecret            string
 	StripeSecretKey      string
 	StripeWebhookSecret  string
+	SchemasPath          string
 }
 
 func InitLogging() int {
 	logLevel := getConfigInt(nil, "LOG_LEVEL", 1) //1=Info (-1=Trace,0=Debug,2=Warn,3=Error,etc, see the top of zerolog/log.go)
 	zerolog.SetGlobalLevel(zerolog.Level(logLevel))
 	return logLevel
+}
+
+func GetResponseTemplatesDir() string {
+	// Get the path of the current executable
+	originalDir, err := os.Getwd()
+
+	if err != nil {
+		panic("could not determine own path via os.Executable")
+	}
+	schemasDir := filepath.Join(originalDir, "response_templates")
+	log.Trace().Msgf("GetResponseTemplatesDir determined schemasDir: %s", schemasDir)
+	return schemasDir
 }
 
 // GetServiceConfig function to return a pointer to serviceConfig
@@ -49,7 +63,7 @@ func GetServiceConfig(logLevel int) *ServiceConfig {
 	reactAppURL := flag.String("react-app-url", "", "URL for React app")
 	gcsBucket := flag.String("gcs-bucket", "", "File system type (local or gcs)")
 	openAiApiKey := flag.String("api-key", "", "OpenAI API Key")
-	localPath := flag.String("local-path", "", "Mode of the application (server or cli)")
+	localPath := flag.String("local-path", "", "Local path for outputs")
 	fstype := flag.String("fstype", "", "File system type (local or gcs)")
 	mode := flag.String("mode", "", "Mode of the application (server or cli)")
 	useSystemGs := flag.Bool("use-system-gs", false, "Use GhostScript from the system instead of via docker run")
@@ -76,6 +90,7 @@ func GetServiceConfig(logLevel int) *ServiceConfig {
 		JwtSecret:            getConfig(nil, "JWT_SECRET", ""),
 		StripeSecretKey:      getConfig(nil, "STRIPE_API_SECRET_KEY", ""), //todo make sure this gets put into secrets and set in the deploy.
 		StripeWebhookSecret:  getConfig(nil, "STRIPE_WEBHOOK_SECRET", ""), //todo make sure this gets put into secrets and set in the deploy.
+		SchemasPath:          GetResponseTemplatesDir(),
 	}
 
 	//Validation
