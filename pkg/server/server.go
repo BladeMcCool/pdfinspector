@@ -158,7 +158,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 		err := inputJob.ValidateForNonAdmin()
 		if err != nil {
 			log.Error().Msgf("invalid inputJob %v", err)
-			http.Error(w, "Bad Request: invalid inputJob", http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Bad Request: invalid inputJob: %s", err.Error()), http.StatusBadRequest)
 			return
 		}
 		userKey, _ := r.Context().Value("userKey").(string)
@@ -435,7 +435,21 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 func (s *pdfInspectorServer) GetJsonSchemaHandler(w http.ResponseWriter, r *http.Request) {
 	layout := chi.URLParam(r, "layout")
 	log.Info().Msgf("here in GetJsonSchemaHandler for %s", layout)
-	schema, err := s.jobRunner.Tuner.GetCompleteJsonSchema(layout)
+
+	var err error
+	var schema interface{}
+	variant := r.URL.Query().Get("variant")
+	if variant != "" {
+		// Set Content-Disposition to "inline" to display in the browser
+		if variant == "response" {
+			schema, err = s.jobRunner.Tuner.GetExpectedResponseJsonSchema(layout)
+		} else {
+			err = fmt.Errorf("Unknown schema variant: %s", variant)
+		}
+	} else {
+		schema, err = s.jobRunner.Tuner.GetCompleteJsonSchema(layout)
+	}
+
 	if err != nil {
 		http.NotFound(w, r)
 		return

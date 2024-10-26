@@ -10,7 +10,6 @@ import (
 	"pdfinspector/pkg/config"
 	"pdfinspector/pkg/filesystem"
 	"pdfinspector/pkg/job"
-	"strings"
 	"time"
 )
 
@@ -18,12 +17,14 @@ var TrueVal = true
 
 func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) error {
 	job.Log().Info().Str("user_key", job.UserKey).Msgf("starting TuneResumeContents")
+	job.Log().Info().Msg("here1")
 	SendJobUpdate(updates, "getting any JD meta")
 	jDmetaRawJSON, err := t.takeNotesOnJD(job)
 	if err != nil {
 		job.Log().Info().Msgf("error taking notes on JD: %s", err.Error())
 		return err
 	}
+	job.Log().Info().Msg("here2")
 	jDMetaDecoded := &jdMeta{}
 	err = json.Unmarshal([]byte(jDmetaRawJSON), jDMetaDecoded)
 	if err != nil {
@@ -33,33 +34,40 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 	SendJobUpdate(updates, "got any JD meta")
 
 	//panic("does it look right - before proceeding")
-	kwPrompt := ""
-	if len(jDMetaDecoded.Keywords) > 0 {
-		kwPrompt = "The adjusted resume data should contain as many of the following keywords as is reasonable/possible: " + strings.Join(jDMetaDecoded.Keywords, ", ") + "\n"
-	}
-	prompt_parts := []string{
-		job.MainPrompt,
-		"\n--- start job description ---\n",
-		job.JobDescription,
-		"\n--- end job description ---\n",
-		kwPrompt,
-		"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
-		job.BaselineJSON,
-	}
-
-	//perhaps the resumedata should be at the start and the instructions of what to do with it should come after? need to a/b test this stuff somehow.
+	job.Log().Info().Msg("here3")
+	//kwPrompt := ""
+	//if len(jDMetaDecoded.Keywords) > 0 {
+	//	kwPrompt = "The adjusted resume data should contain as many of the following keywords as is reasonable/possible: " + strings.Join(jDMetaDecoded.Keywords, ", ") + "\n"
+	//}
 	//prompt_parts := []string{
-	//	"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
-	//	baselineJSON,
+	//	job.MainPrompt,
 	//	"\n--- start job description ---\n",
-	//	input.JD,
+	//	job.JobDescription,
 	//	"\n--- end job description ---\n",
 	//	kwPrompt,
-	//	mainPrompt,
+	//	"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
+	//	job.BaselineJSON,
 	//}
+	//
+	////perhaps the resumedata should be at the start and the instructions of what to do with it should come after? need to a/b test this stuff somehow.
+	////prompt_parts := []string{
+	////	"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
+	////	baselineJSON,
+	////	"\n--- start job description ---\n",
+	////	input.JD,
+	////	"\n--- end job description ---\n",
+	////	kwPrompt,
+	////	mainPrompt,
+	////}
+	//
+	//prompt := strings.Join(prompt_parts, "")
+	//
+	//
+	prompt := t.GetCompletePromptForLayout(job, jDMetaDecoded.Keywords)
 
-	prompt := strings.Join(prompt_parts, "")
 	expectResponseSchema, err := t.GetExpectedResponseJsonSchema(job.Layout)
+	job.Log().Info().Msg("here4")
+
 	// Create a map to represent the API request structure
 	data := map[string]interface{}{
 		"model": "gpt-4o-mini",
@@ -101,8 +109,11 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 	messages := data["messages"].([]map[string]interface{}) //preserve orig
 
 	var attemptsLog []inspectResult
+	job.Log().Info().Msg("here4.1")
 
 	for i := 0; i < job.MaxAttempts; i++ {
+		job.Log().Info().Msg("here5")
+
 		api_request_pretty, err := serializeToJSON(data)
 		if err != nil {
 			return fmt.Errorf("Failed to marshal final JSON: %v", err)

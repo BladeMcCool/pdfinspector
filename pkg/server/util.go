@@ -183,3 +183,7 @@ func sortAndSerializeGenerations(generations []generationInfo) (string, error) {
 
 	return string(jsonData), nil
 }
+
+func formatTemplateObjectName(userID, objectName string) string {
+	return fmt.Sprintf("sso/%s/template/%s.json", userID, objectName)
+}

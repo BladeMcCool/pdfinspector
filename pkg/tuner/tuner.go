@@ -84,6 +84,65 @@ func NewTuner(config *config.ServiceConfig) *Tuner {
 	return t
 }
 
+var defaultAcceptableRatio = 0.88
+
+var defaultMaxAttempts = 7 //this should probably come from env
+//var defaultMaxAttempts = 1 //this should probably come from env
+
+type LayoutCustomization struct {
+	//min and max length for page
+	//prompts
+	AcceptableRatio float64
+	DefaultPrompt   string
+}
+
+var layoutDefaults = map[string]LayoutCustomization{
+	"chrono": {
+		AcceptableRatio: defaultAcceptableRatio,
+		DefaultPrompt: strings.Join([]string{
+			"The task is to examine a Job Description and a resume data structure with the goal of adjusting the data structure such that the final rendered resume presents the perfect candidate for the job while still keeping the final render to exactly one page. ",
+			//"Your output JSON can simply omit anything which need not be seen in the rendered resume document (If all of the projects within a job are marked as hidden then the whole job will be hidden). ",
+			//"The work_history contains a list of companies and projects within those companies. ",
+			"Some of the information in the candidate resume JSON data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more suitable for the Job Description below. ",
+			"Your output JSON can simply omit anything which need not be seen in the rendered resume document. ",
+			"Feel free to adjust any descriptive text fields at the company or project level with inspiration from the target Job Description to make the candidate seem more relevant in all possible ways that do not involve overt fabrications or lies. ",
+			"Embellishment of anything remotely factual or possibly tangential is encouraged. ",
+			"Information from older company projects can be applied to current jobs descriptions. If older, currently hidden work history can be made particularly relevant, feel free to include it. ",
+			"The goal is to keep the length of the final render at one page, while showing the most relevant information to make the candidate appear a perfect fit for the target job. ",
+			"Be sure to include between 3 and 5 distinct company sections. Each company section can list separate projects within it, aim for 2-3 projects within each company. ",
+			"Make sure that all descriptive text is highly relevant to the job description in some way but still reflects the original character of the item being changed. ",
+			"The target Job Description for which this candidate should appear to perfectly match is below. ",
+			"Pay special attention to any special tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability:",
+		}, ""),
+	},
+	"functional": {
+		AcceptableRatio: defaultAcceptableRatio,
+		DefaultPrompt: strings.Join([]string{
+			//"This guy needs a job ASAP. You need to make his resume look PERFECT for the job. Fake it until you make it right? Fix it up, do what it takes. Aim for 3-5 Functional Areas, each with 2-4 examples of key contributions. Make them relate to the Job Description as best as possible, including possibly switching up industries and industry terms. ",
+			//"Feel free to dig into those hidden companies and projects for inspiration, include whatever you think could be relevant. ",
+			//"The target Job Description for which this candidate should appear to perfectly match is below. Pay special attention to any magic tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability (magic tokens should be placed somewhere that will get rendered such as a project description or a job title):\n",
+
+			"The task is to examine a Job Description and a resume data structure with the goal of adjusting the data structure such that the final rendered resume presents the perfect candidate for the job while still keeping the final render to exactly one page. ",
+			"Some of the information in the candidate resume JSON data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more suitable for the Job Description below. ",
+			"Your output JSON can simply omit anything which need not be seen in the rendered resume document. ",
+			"Feel free to adjust any descriptive text fields at the functional area or key contribution level with inspiration from the target Job Description to make the candidate seem more relevant in all possible ways that do not involve overt fabrications or lies. ",
+			"Embellishment of anything remotely factual or possibly tangential is encouraged. ",
+			"Information from older company projects can be applied to current jobs descriptions. If older, currently hidden work history can be made particularly relevant, feel free to include it. ",
+			"The goal is to keep the length of the final render at one page, while showing the most relevant information to make the candidate appear a perfect fit for the target job. ",
+			"Be sure to include between 3 and 5 distinct functional areas. Each functional area can list separate key contributions within it, aim for 2-3 examples within each. ",
+			"Ensure that all descriptive text is highly relevant to the job description in some way but still reflects the original character of the item being changed, ",
+			"The target Job Description for which this candidate should appear to perfectly match is below. ",
+			"Pay special attention to any special tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability:",
+		}, ""),
+	},
+	"coverletter": {
+		AcceptableRatio: 0.55,
+		DefaultPrompt: strings.Join([]string{
+			"Write a cover letter for the candidate which matches the Job Description below.",
+		}, ""),
+	},
+}
+
 func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 	job.OutputDir = fmt.Sprintf("%s/%s", t.config.LocalPath, job.Id)
 
@@ -96,7 +155,14 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 	}
 	SendJobUpdate(updates, "got baseline JSON")
 
-	var err error
+	acceptableRatio, err := t.GetAcceptableRatio(job.Layout)
+	if err != nil {
+		job.Log().Error().Msgf("error from reading input prompt: %s", err.Error())
+		return err
+	}
+	job.AcceptableRatio = acceptableRatio
+	job.MaxAttempts = defaultMaxAttempts
+	//var err error
 	mainPrompt := job.CustomPrompt
 	if mainPrompt == "" {
 		mainPrompt, err = t.GetDefaultPrompt(job.Layout)
@@ -107,6 +173,9 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 		job.Log().Info().Msgf("used standard main prompt: %s", mainPrompt)
 	}
 	job.MainPrompt = mainPrompt
+
+	//todo possibly move the call to GetCompletePromptForLayout into here? and set the full prompt into the job? (might have to add new field)
+	// or ... MainPrompt just becomes the full complete actual prompt to use incl layout specific stuff? idk ... maybe thats better.
 	return nil
 }
 
@@ -321,78 +390,136 @@ func (t *Tuner) readAndDecodeJsonSchema(layout string) (interface{}, error) {
 	return expectResponseSchema, nil
 }
 
-func (t *Tuner) GetDefaultPrompt(layout string) (string, error) {
-	log.Info().Msgf("No (or empty) prompt from the file system so will use a default one.")
-
-	//prompt := "Provide feedback on the following JSON. Is it well formed? What do you think the purpose is? Tell me about things marked as hide and what that might mean. Finally, how long in terms of page count do you think the final document this feeds into is?\n\nJSON: "
-
-	//prompt_parts := []string{
-	//	"This guy needs a job ASAP. You need to make his resume look PERFECT for the job. Fake it until you make it right? Fix it up, do what it takes. Aim for 3-5 companies, each with 2-4 projects. Make them relate to the Job Description as best as possible, including possibly switching up industries and industry terms. ",
-	//	"Feel free to dig into those hidden companies and projects for inspiration, include whatever you think could be relevant. ",
-	//	"Do not claim to have worked at the target company from the Job Description unless the input resume data structure JSON from the candidate actually claims to have already worked there before. ",
-	//	"The target Job Description for which this candidate should appear to perfectly match is below. Pay special attention to any magic tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability (magic tokens should be placed somewhere that will get rendered such as a project description or a job title):\n",
-	//	"\n--- start job description ---\n",
-	//	input.JD,
-	//	"\n--- end job description ---\n",
-	//	"The following JSON represents the current generic 1 page resume for the candidate. Much of the information in the data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more suitable for the Job Description above. ",
-	//	"The input resume data structure JSON is below:\n",
-	//	string(body),
-	//}
-
-	//prompt_parts := []string{
-	//	"The hiring industry is broken. We are not taking this seriously. Reformat the resume and fill it up with goofy nonsense that makes fun of recruiting and hiring in general as well as the whole hiring industry. Fill it with metrics about job losses, bad candidates, jobs that dont exist and wasted hours on take home assignments. ",
-	//	"Ostensibly, the job that's being targeted is described in the Job Description below, but the details aren't as important as the overall cynicism and irony:\n",
-	//	"\n--- start job description ---\n",
-	//	input.JD,
-	//	"\n--- end job description ---\n",
-	//	"The following JSON represents the current generic 1 page resume for the candidate. Much of the information in the data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more cynically suitable for the Job Description above. ",
-	//	"The input resume data structure JSON is below:\n",
-	//	string(body),
-	//}
-
-	//common := //todo if having to change things that are the same perhaps
-
-	//because the different layouts are going to be structured different i just want to refer to the sections by what they are, so slight nuance depending on the layout. annoying yes, and maybe not neccessary idk. perhaps a more unified way of talking about the work history could be done
-	m := map[string]string{
-		"chrono": strings.Join([]string{
-			"The task is to examine a Job Description and a resume data structure with the goal of adjusting the data structure such that the final rendered resume presents the perfect candidate for the job while still keeping the final render to exactly one page. ",
-			//"Your output JSON can simply omit anything which need not be seen in the rendered resume document (If all of the projects within a job are marked as hidden then the whole job will be hidden). ",
-			//"The work_history contains a list of companies and projects within those companies. ",
-			"Some of the information in the candidate resume JSON data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more suitable for the Job Description below. ",
-			"Your output JSON can simply omit anything which need not be seen in the rendered resume document. ",
-			"Feel free to adjust any descriptive text fields at the company or project level with inspiration from the target Job Description to make the candidate seem more relevant in all possible ways that do not involve overt fabrications or lies. ",
-			"Embellishment of anything remotely factual or possibly tangential is encouraged. ",
-			"Information from older company projects can be applied to current jobs descriptions. If older, currently hidden work history can be made particularly relevant, feel free to include it. ",
-			"The goal is to keep the length of the final render at one page, while showing the most relevant information to make the candidate appear a perfect fit for the target job. ",
-			"Be sure to include between 3 and 5 distinct company sections. Each company section can list separate projects within it, aim for 2-3 projects within each company. ",
-			"Make sure that all descriptive text is highly relevant to the job description in some way but still reflects the original character of the item being changed. ",
-			"The target Job Description for which this candidate should appear to perfectly match is below. ",
-			"Pay special attention to any special tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability:",
-		}, ""),
-		"functional": strings.Join([]string{
-			//"This guy needs a job ASAP. You need to make his resume look PERFECT for the job. Fake it until you make it right? Fix it up, do what it takes. Aim for 3-5 Functional Areas, each with 2-4 examples of key contributions. Make them relate to the Job Description as best as possible, including possibly switching up industries and industry terms. ",
-			//"Feel free to dig into those hidden companies and projects for inspiration, include whatever you think could be relevant. ",
-			//"The target Job Description for which this candidate should appear to perfectly match is below. Pay special attention to any magic tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability (magic tokens should be placed somewhere that will get rendered such as a project description or a job title):\n",
-
-			"The task is to examine a Job Description and a resume data structure with the goal of adjusting the data structure such that the final rendered resume presents the perfect candidate for the job while still keeping the final render to exactly one page. ",
-			"Some of the information in the candidate resume JSON data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more suitable for the Job Description below. ",
-			"Your output JSON can simply omit anything which need not be seen in the rendered resume document. ",
-			"Feel free to adjust any descriptive text fields at the functional area or key contribution level with inspiration from the target Job Description to make the candidate seem more relevant in all possible ways that do not involve overt fabrications or lies. ",
-			"Embellishment of anything remotely factual or possibly tangential is encouraged. ",
-			"Information from older company projects can be applied to current jobs descriptions. If older, currently hidden work history can be made particularly relevant, feel free to include it. ",
-			"The goal is to keep the length of the final render at one page, while showing the most relevant information to make the candidate appear a perfect fit for the target job. ",
-			"Be sure to include between 3 and 5 distinct functional areas. Each functional area can list separate key contributions within it, aim for 2-3 examples within each. ",
-			"Ensure that all descriptive text is highly relevant to the job description in some way but still reflects the original character of the item being changed, ",
-			"The target Job Description for which this candidate should appear to perfectly match is below. ",
-			"Pay special attention to any special tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability:",
-		}, ""),
-	}
-	value, ok := m[layout]
+func (t *Tuner) GetLayoutDefaults(layout string) (*LayoutCustomization, error) {
+	defaults, ok := layoutDefaults[layout]
 	if !ok {
-		return "", errors.New("layout prompt not found: " + layout)
+		return nil, fmt.Errorf("Unknown layout: %s", layout)
 	}
-	return value, nil
+
+	return &defaults, nil
 }
+
+func (t *Tuner) GetAcceptableRatio(layout string) (float64, error) {
+	defaults, err := t.GetLayoutDefaults(layout)
+	if err != nil {
+		return 0.0, err
+	}
+
+	return defaults.AcceptableRatio, nil
+}
+
+func (t *Tuner) GetDefaultPrompt(layout string) (string, error) {
+	defaults, err := t.GetLayoutDefaults(layout)
+	if err != nil {
+		return "", err
+	}
+
+	return defaults.DefaultPrompt, nil
+}
+
+func (t *Tuner) GetCompletePromptForLayout(job *job.Job, keywords []string) string {
+	//templateData, err := s.readTemplateFromGCS(r.Context(), templateObjectName)
+	kwPrompt := ""
+	if len(keywords) > 0 {
+		kwPrompt = "The adjusted resume data should contain as many of the following keywords as is reasonable/possible: " + strings.Join(jDMetaDecoded.Keywords, ", ") + "\n"
+	}
+	prompt_parts := []string{
+		job.MainPrompt,
+		"\n--- start job description ---\n",
+		job.JobDescription,
+		"\n--- end job description ---\n",
+		kwPrompt,
+		"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
+		job.BaselineJSON,
+	}
+
+	//perhaps the resumedata should be at the start and the instructions of what to do with it should come after? need to a/b test this stuff somehow.
+	//prompt_parts := []string{
+	//	"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
+	//	baselineJSON,
+	//	"\n--- start job description ---\n",
+	//	input.JD,
+	//	"\n--- end job description ---\n",
+	//	kwPrompt,
+	//	mainPrompt,
+	//}
+
+	return strings.Join(prompt_parts, "")
+}
+
+//
+//func (t *Tuner) xxGetDefaultPrompt(layout string) (string, error) {
+//	log.Info().Msgf("No (or empty) prompt from the file system so will use a default one.")
+//
+//	//prompt := "Provide feedback on the following JSON. Is it well formed? What do you think the purpose is? Tell me about things marked as hide and what that might mean. Finally, how long in terms of page count do you think the final document this feeds into is?\n\nJSON: "
+//
+//	//prompt_parts := []string{
+//	//	"This guy needs a job ASAP. You need to make his resume look PERFECT for the job. Fake it until you make it right? Fix it up, do what it takes. Aim for 3-5 companies, each with 2-4 projects. Make them relate to the Job Description as best as possible, including possibly switching up industries and industry terms. ",
+//	//	"Feel free to dig into those hidden companies and projects for inspiration, include whatever you think could be relevant. ",
+//	//	"Do not claim to have worked at the target company from the Job Description unless the input resume data structure JSON from the candidate actually claims to have already worked there before. ",
+//	//	"The target Job Description for which this candidate should appear to perfectly match is below. Pay special attention to any magic tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability (magic tokens should be placed somewhere that will get rendered such as a project description or a job title):\n",
+//	//	"\n--- start job description ---\n",
+//	//	input.JD,
+//	//	"\n--- end job description ---\n",
+//	//	"The following JSON represents the current generic 1 page resume for the candidate. Much of the information in the data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more suitable for the Job Description above. ",
+//	//	"The input resume data structure JSON is below:\n",
+//	//	string(body),
+//	//}
+//
+//	//prompt_parts := []string{
+//	//	"The hiring industry is broken. We are not taking this seriously. Reformat the resume and fill it up with goofy nonsense that makes fun of recruiting and hiring in general as well as the whole hiring industry. Fill it with metrics about job losses, bad candidates, jobs that dont exist and wasted hours on take home assignments. ",
+//	//	"Ostensibly, the job that's being targeted is described in the Job Description below, but the details aren't as important as the overall cynicism and irony:\n",
+//	//	"\n--- start job description ---\n",
+//	//	input.JD,
+//	//	"\n--- end job description ---\n",
+//	//	"The following JSON represents the current generic 1 page resume for the candidate. Much of the information in the data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more cynically suitable for the Job Description above. ",
+//	//	"The input resume data structure JSON is below:\n",
+//	//	string(body),
+//	//}
+//
+//	//common := //todo if having to change things that are the same perhaps
+//
+//	//because the different layouts are going to be structured different i just want to refer to the sections by what they are, so slight nuance depending on the layout. annoying yes, and maybe not neccessary idk. perhaps a more unified way of talking about the work history could be done
+//	m := map[string]string{
+//		"chrono": strings.Join([]string{
+//			"The task is to examine a Job Description and a resume data structure with the goal of adjusting the data structure such that the final rendered resume presents the perfect candidate for the job while still keeping the final render to exactly one page. ",
+//			//"Your output JSON can simply omit anything which need not be seen in the rendered resume document (If all of the projects within a job are marked as hidden then the whole job will be hidden). ",
+//			//"The work_history contains a list of companies and projects within those companies. ",
+//			"Some of the information in the candidate resume JSON data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more suitable for the Job Description below. ",
+//			"Your output JSON can simply omit anything which need not be seen in the rendered resume document. ",
+//			"Feel free to adjust any descriptive text fields at the company or project level with inspiration from the target Job Description to make the candidate seem more relevant in all possible ways that do not involve overt fabrications or lies. ",
+//			"Embellishment of anything remotely factual or possibly tangential is encouraged. ",
+//			"Information from older company projects can be applied to current jobs descriptions. If older, currently hidden work history can be made particularly relevant, feel free to include it. ",
+//			"The goal is to keep the length of the final render at one page, while showing the most relevant information to make the candidate appear a perfect fit for the target job. ",
+//			"Be sure to include between 3 and 5 distinct company sections. Each company section can list separate projects within it, aim for 2-3 projects within each company. ",
+//			"Make sure that all descriptive text is highly relevant to the job description in some way but still reflects the original character of the item being changed. ",
+//			"The target Job Description for which this candidate should appear to perfectly match is below. ",
+//			"Pay special attention to any special tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability:",
+//		}, ""),
+//		"functional": strings.Join([]string{
+//			//"This guy needs a job ASAP. You need to make his resume look PERFECT for the job. Fake it until you make it right? Fix it up, do what it takes. Aim for 3-5 Functional Areas, each with 2-4 examples of key contributions. Make them relate to the Job Description as best as possible, including possibly switching up industries and industry terms. ",
+//			//"Feel free to dig into those hidden companies and projects for inspiration, include whatever you think could be relevant. ",
+//			//"The target Job Description for which this candidate should appear to perfectly match is below. Pay special attention to any magic tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability (magic tokens should be placed somewhere that will get rendered such as a project description or a job title):\n",
+//
+//			"The task is to examine a Job Description and a resume data structure with the goal of adjusting the data structure such that the final rendered resume presents the perfect candidate for the job while still keeping the final render to exactly one page. ",
+//			"Some of the information in the candidate resume JSON data structure is currently set to be hidden in the output, but this information is available to inspire any changes which may make the candidate appear more suitable for the Job Description below. ",
+//			"Your output JSON can simply omit anything which need not be seen in the rendered resume document. ",
+//			"Feel free to adjust any descriptive text fields at the functional area or key contribution level with inspiration from the target Job Description to make the candidate seem more relevant in all possible ways that do not involve overt fabrications or lies. ",
+//			"Embellishment of anything remotely factual or possibly tangential is encouraged. ",
+//			"Information from older company projects can be applied to current jobs descriptions. If older, currently hidden work history can be made particularly relevant, feel free to include it. ",
+//			"The goal is to keep the length of the final render at one page, while showing the most relevant information to make the candidate appear a perfect fit for the target job. ",
+//			"Be sure to include between 3 and 5 distinct functional areas. Each functional area can list separate key contributions within it, aim for 2-3 examples within each. ",
+//			"Ensure that all descriptive text is highly relevant to the job description in some way but still reflects the original character of the item being changed, ",
+//			"The target Job Description for which this candidate should appear to perfectly match is below. ",
+//			"Pay special attention to any special tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability:",
+//		}, ""),
+//	}
+//	value, ok := m[layout]
+//	if !ok {
+//		return "", errors.New("layout prompt not found: " + layout)
+//	}
+//	return value, nil
+//}
 
 func (t *Tuner) makeAPIRequest(apiBody interface{}, counter int, name, outputDir string) (string, error) {
 	//panic("slow down there son, you really want to hit the paid api at this time?")

@@ -24,6 +24,8 @@ func (j *JobRunner) RunJob(job *job.Job, updates chan job.JobStatus) {
 	err := j.Tuner.PopulateJob(job, updates)
 	if err != nil {
 		job.Log().Error().Msgf("Error from PopulateJob: %v", err)
+		tuner.SendJobErrorUpdate(updates, fmt.Sprintf("Error from PopulateJob: %v", err))
+		return
 	}
 	job.Log().Trace().Msgf("debug here job output dir: %s", job.OutputDir)
 

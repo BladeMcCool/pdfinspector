@@ -37,6 +37,7 @@ type Job struct {
 	Id             string
 	OverrideJobId  *string `json:"job_id,omitempty"` //generally speaking this can't be set by a user, is just for admin/testing
 	Layout         string  `json:"layout""`
+	Supplement     string  `json:"supplement""` //the identifier for a template in gcs to be used to supplement the prompt -- adding this so that i can select some saved resumedata to go along with a cover letter prompt, in addition to the custom cover letter tune data.
 
 	MainPrompt string
 	//ExpectResponseSchema interface{} //will get a json schema based on the layout.
@@ -56,9 +57,9 @@ type Job struct {
 	Logger *zerolog.Logger
 }
 
-var defaultAcceptableRatio = 0.88
+//var defaultAcceptableRatio = 0.88
 
-var defaultMaxAttempts = 7 //this should probably come from env
+//var defaultMaxAttempts = 7 //this should probably come from env
 //var defaultMaxAttempts = 1 //this should probably come from env
 
 func NewDefaultJob() *Job {
@@ -72,8 +73,11 @@ func (job *Job) PrepareDefault(jobId *string) {
 	} else {
 		job.Id = *jobId
 	}
-	job.AcceptableRatio = defaultAcceptableRatio
-	job.MaxAttempts = defaultMaxAttempts
+
+	/// todo dont set this here.
+	//panic("set job acceptable ratio in the same spot we set the prompt.") // and max attempts
+	//job.AcceptableRatio = defaultAcceptableRatio
+	//job.MaxAttempts = defaultMaxAttempts
 	job.Logger = getLogger(job.Id)
 }
 
@@ -102,7 +106,7 @@ func (job *Job) ValidateForNonAdmin() error {
 	}
 
 	// Check if the layout value is either "functional" or "chrono"
-	if job.Layout == "functional" || job.Layout == "chrono" {
+	if job.Layout == "functional" || job.Layout == "chrono" || job.Layout == "coverletter" {
 		log.Info().Msgf("The layout is: %s", job.Layout)
 	} else {
 		return errors.New("The layout is neither 'functional' nor 'chrono'")
