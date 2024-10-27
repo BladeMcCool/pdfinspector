@@ -63,7 +63,10 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 	//prompt := strings.Join(prompt_parts, "")
 	//
 	//
-	prompt := t.GetCompletePromptForLayout(job, jDMetaDecoded.Keywords)
+	prompt, err := t.GetCompletePromptForLayout(job, jDMetaDecoded.Keywords)
+	if err != nil {
+		return err
+	}
 
 	expectResponseSchema, err := t.GetExpectedResponseJsonSchema(job.Layout)
 	job.Log().Info().Msg("here4")

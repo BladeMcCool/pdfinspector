@@ -39,7 +39,8 @@ type Job struct {
 	Layout         string  `json:"layout""`
 	Supplement     string  `json:"supplement""` //the identifier for a template in gcs to be used to supplement the prompt -- adding this so that i can select some saved resumedata to go along with a cover letter prompt, in addition to the custom cover letter tune data.
 
-	MainPrompt string
+	MainPrompt     string
+	SupplementData []byte //the actual content of supplement data we may have to collect from gcs
 	//ExpectResponseSchema interface{} //will get a json schema based on the layout.
 
 	OutputDir       string
@@ -80,6 +81,10 @@ func (job *Job) PrepareDefault(jobId *string) {
 	//job.MaxAttempts = defaultMaxAttempts
 	job.Logger = getLogger(job.Id)
 }
+
+//func (job *Job) AddSupplement(supplementData *string) {
+//	if supplementData == nil {}
+//}
 
 //	func (job *Job) OverrideJobId(jobId string) {
 //		job.Id = jobId

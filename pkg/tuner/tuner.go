@@ -94,6 +94,8 @@ type LayoutCustomization struct {
 	//prompts
 	AcceptableRatio float64
 	DefaultPrompt   string
+	ComposePrompt   func(job *job.Job, keywords []string) string
+	CanSupplement   bool //true if this type of layout might need to have prompt supplemented with some sort of data from gcs
 }
 
 var layoutDefaults = map[string]LayoutCustomization{
@@ -114,6 +116,7 @@ var layoutDefaults = map[string]LayoutCustomization{
 			"The target Job Description for which this candidate should appear to perfectly match is below. ",
 			"Pay special attention to any special tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability:",
 		}, ""),
+		ComposePrompt: resumeComposePrompt,
 	},
 	"functional": {
 		AcceptableRatio: defaultAcceptableRatio,
@@ -134,12 +137,15 @@ var layoutDefaults = map[string]LayoutCustomization{
 			"The target Job Description for which this candidate should appear to perfectly match is below. ",
 			"Pay special attention to any special tokens that the job wants included in applications, or weird instructions. Be prepared to follow them to the best of your ability:",
 		}, ""),
+		ComposePrompt: resumeComposePrompt,
 	},
 	"coverletter": {
 		AcceptableRatio: 0.55,
 		DefaultPrompt: strings.Join([]string{
 			"Write a cover letter for the candidate which matches the Job Description below.",
 		}, ""),
+		ComposePrompt: coverletterComposePrompt,
+		CanSupplement: true,
 	},
 }
 
@@ -162,6 +168,7 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 	}
 	job.AcceptableRatio = acceptableRatio
 	job.MaxAttempts = defaultMaxAttempts
+
 	//var err error
 	mainPrompt := job.CustomPrompt
 	if mainPrompt == "" {
@@ -173,6 +180,13 @@ func (t *Tuner) PopulateJob(job *job.Job, updates chan job.JobStatus) error {
 		job.Log().Info().Msgf("used standard main prompt: %s", mainPrompt)
 	}
 	job.MainPrompt = mainPrompt
+
+	//defaults, err := t.GetLayoutDefaults(layout)
+	//if err != nil {
+	//	return "", err
+	//}
+	//job.AddSupplement(t.GetJobSupplement(job.Layout))
+	job.SupplementData = t.GetJobSupplement(job)
 
 	//todo possibly move the call to GetCompletePromptForLayout into here? and set the full prompt into the job? (might have to add new field)
 	// or ... MainPrompt just becomes the full complete actual prompt to use incl layout specific stuff? idk ... maybe thats better.
@@ -417,34 +431,49 @@ func (t *Tuner) GetDefaultPrompt(layout string) (string, error) {
 	return defaults.DefaultPrompt, nil
 }
 
-func (t *Tuner) GetCompletePromptForLayout(job *job.Job, keywords []string) string {
-	//templateData, err := s.readTemplateFromGCS(r.Context(), templateObjectName)
-	kwPrompt := ""
-	if len(keywords) > 0 {
-		kwPrompt = "The adjusted resume data should contain as many of the following keywords as is reasonable/possible: " + strings.Join(jDMetaDecoded.Keywords, ", ") + "\n"
+func (t *Tuner) GetJobSupplement(job *job.Job) []byte {
+	if job.Supplement == "" {
+		return nil
 	}
-	prompt_parts := []string{
-		job.MainPrompt,
-		"\n--- start job description ---\n",
-		job.JobDescription,
-		"\n--- end job description ---\n",
-		kwPrompt,
-		"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
-		job.BaselineJSON,
+	if job.UserID == "" {
+		//idk this shouldnt really happen but if it did we wont be able to find any supplement anyway.
+		log.Error().Msgf("Why are we trying to supplment when we dont have a UserID?")
+		return nil
+	}
+	defaults, err := t.GetLayoutDefaults(job.Layout)
+	if err != nil {
+		return nil
+	}
+	if !defaults.CanSupplement {
+		return nil
 	}
 
-	//perhaps the resumedata should be at the start and the instructions of what to do with it should come after? need to a/b test this stuff somehow.
-	//prompt_parts := []string{
-	//	"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
-	//	baselineJSON,
-	//	"\n--- start job description ---\n",
-	//	input.JD,
-	//	"\n--- end job description ---\n",
-	//	kwPrompt,
-	//	mainPrompt,
-	//}
+	//only type of supplement atm is a named template from the users collection.
+	//the idea is that the form submission for document tuning will include the jd and the baseline 'coverletter' json, so that they can tune an existing cover letter, same as the resume tuning.
+	//however, without resumedata to inform the tune of the cover letter along with the JD, the context for the cover letter will be pretty weak (just a JD and some personal info in the baseline cover letter).
+	// sooooo ... what i came up with to allow this but not break everything else is you can select a template of resumedata (or a coverletter but that would be less useful) to go along with the prompt
+	supplementGcsObjectname := fmt.Sprintf("sso/%s/template/%s.json", job.UserID, job.Supplement)
+	log.Info().Msgf("GetJobSupplement for a layout (%s) that allows it, on a job that specifies it: %s - object name: %s", job.Layout, job.Supplement, supplementGcsObjectname)
+	fileBytes, err := t.Fs.ReadFile(context.Background(), supplementGcsObjectname)
+	if err != nil {
+		log.Info().Msgf("error obtaining suppplement, will just skip it: %s", err.Error())
+		panic("stop here while testing. should be getting it")
+		return nil
+	}
+	//supplementData := string(fileBytes)
+	log.Info().Msgf("GetJobSupplement obtained %d bytes of template json to be able to use in prompting.", len(fileBytes))
 
-	return strings.Join(prompt_parts, "")
+	//return &supplementData
+	return fileBytes
+}
+
+func (t *Tuner) GetCompletePromptForLayout(job *job.Job, keywords []string) (string, error) {
+	defaults, err := t.GetLayoutDefaults(job.Layout)
+	if err != nil {
+		return "", err
+	}
+
+	return defaults.ComposePrompt(job, keywords), nil
 }
 
 //
