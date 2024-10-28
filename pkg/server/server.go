@@ -74,9 +74,10 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Use(s.SSOUserDetectionMiddleware)
 
 	// Define open routes
-	router.Get("/", s.rootHandler)                 // Root handler
-	router.Get("/health", s.healthHandler)         // Health check handler
-	router.Get("/joboutput/*", s.jobOutputHandler) // Get the output
+	router.Get("/", s.rootHandler)                                  // Root handler
+	router.Get("/health", s.healthHandler)                          // Health check handler
+	router.Get("/joboutput/{genId}/{filename}", s.jobOutputHandler) // Get the output
+	router.Get("/joboutput/{genId}", s.legacyJobOutputHandler)      // Get the output
 	router.Get("/schema/{layout}", s.GetJsonSchemaHandler)
 	router.Get("/getapitoken", s.GetAPIToken)
 	router.Get("/getusergenids", s.GetUserGenIDsHandler)
@@ -314,19 +315,37 @@ func (s *pdfInspectorServer) streamRenderHandler(w http.ResponseWriter, r *http.
 	}
 }
 
+func (s *pdfInspectorServer) legacyJobOutputHandler(w http.ResponseWriter, r *http.Request) {
+	resultPath := strings.Join([]string{"outputs", chi.URLParam(r, "genId"), "Resume.pdf"}, "/")
+	s.returnOutputFromGcs(w, r, resultPath, "Resume.pdf")
+}
+
 func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Request) {
 	//todo can we update this for path params now that we are using chi?
 	// Extract the path and split it by '/'
-	pathParts := strings.Split(r.URL.Path, "/")
-	// should become stuff like []string{"","jobresult","somejobid","somepdf"}
-	if len(pathParts) < 4 {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
-		return
-	}
 
-	// Rejoin everything after "/jobresult/"
-	// pathParts[2:] contains everything after "/jobresult/"
-	resultPath := strings.Join(append([]string{"outputs"}, pathParts[2:]...), "/")
+	//pathParts := strings.Split(r.URL.Path, "/")
+	//// should become stuff like []string{"","jobresult","somejobid","somepdf"}
+	//if len(pathParts) < 4 {
+	//	http.Error(w, "Invalid path", http.StatusBadRequest)
+	//	return
+	//}
+	//
+	//// Rejoin everything after "/jobresult/"
+	//// pathParts[2:] contains everything after "/jobresult/"
+	//log.Info().Msgf("Path Parts: %#v", pathParts)
+	//log.Info().Msgf("Path Parts 0: %#v", pathParts[0:])
+	//log.Info().Msgf("Path Parts 1: %#v", pathParts[1:])
+	//log.Info().Msgf("Path Parts 2: %#v", pathParts[2:])
+	//resultPath := strings.Join(append([]string{"outputs"}, pathParts[2:]...), "/")
+	resultPath := strings.Join([]string{"outputs", chi.URLParam(r, "genId"), tuner.TUNER_DEFAULT_OUTPUT_FILENAME}, "/")
+	fileName := chi.URLParam(r, "filename")
+	s.returnOutputFromGcs(w, r, resultPath, fileName)
+}
+
+func (s *pdfInspectorServer) returnOutputFromGcs(w http.ResponseWriter, r *http.Request, resultPath, fileName string) {
+	//fileName is the filename that we should use to send it back to client with
+	//resultPath is where in GCS it actually is. (ug usually Output.pdf or for legacy was Resume.pdf before I decided to be more generic after introducing cover letter ha ha)
 
 	// Use the rejoined path as needed
 	log.Info().Msgf("Result Path: %s", resultPath)
@@ -339,7 +358,7 @@ func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Req
 	log.Info().Msgf("Read %d bytes of data from GCS", len(data))
 
 	// Infer the Content-Type based on the file extension
-	fileName := pathParts[len(pathParts)-1]
+	//fileName := pathParts[len(pathParts)-1]
 	log.Info().Msgf("Send back with filename: %s", fileName)
 	ext := filepath.Ext(fileName)
 	mimeType := mime.TypeByExtension(ext)

@@ -1,4 +1,4 @@
-// xxx go:build e2e
+//go:build e2e
 
 // ///////
 // And remember to set a GOOGLE_APPLICATION_CREDENTIALS env var to something (json file creds) with that can access a bucket.
@@ -21,10 +21,6 @@ func TestGCSObjectListing(t *testing.T) {
 	}
 
 	tuner := tuner.NewTuner(serviceConfig)
-	//&tuner.Tuner{
-	//	config: serviceConfig,
-	//	//Fs: mfs,
-	//}
 	server := &pdfInspectorServer{
 		jobRunner: &jobrunner.JobRunner{
 			Tuner: tuner,

@@ -206,7 +206,6 @@ func stripStringOfWhiteSpace(in string) string {
 }
 
 func resumeComposePrompt(job *job.Job, keywords []string) string {
-	//templateData, err := s.readTemplateFromGCS(r.Context(), templateObjectName)
 	kwPrompt := ""
 	if len(keywords) > 0 {
 		kwPrompt = "The adjusted resume data should contain as many of the following keywords as is reasonable/possible: " + strings.Join(keywords, ", ") + "\n"
@@ -238,7 +237,6 @@ func resumeComposePrompt(job *job.Job, keywords []string) string {
 func coverletterComposePrompt(job *job.Job, keywords []string) string {
 
 	// cover letter prompt is a little different and can also refer to resumedata supplement.
-	// todo .... this lol
 
 	log.Trace().Msgf("coverletterComposePrompt: job %s", spew.Sprint(job))
 
@@ -257,9 +255,7 @@ func coverletterComposePrompt(job *job.Job, keywords []string) string {
 			}
 		}
 	}
-	//panic("well, here for cover letter compose prompt. do we have what we need?")
-	//templateData, err := s.readTemplateFromGCS(r.Context(), templateObjectName)
-	// '"Write a cover letter for the candidate which matches the Job Description below.",'
+
 	prompt_parts := []string{}
 	if supplement != "" {
 		prompt_parts = append(prompt_parts, []string{

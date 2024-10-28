@@ -73,7 +73,7 @@ func (t *Tuner) RenderResume(renderJob *job.RenderJob, updates chan job.JobStatu
 	SendJobUpdate(updates, fmt.Sprintf("attempt %d png inspection, content ratio: %.2f, page count: %d", attemptNum, result.LastPageContentRatio, result.NumberOfPages))
 
 	attemptsLog := []inspectResult{result}
-	err = saveBestAttemptToGCS(attemptsLog, t.Fs, t.config, compatibilityJob, updates)
+	err = t.saveBestAttemptToGCS(attemptsLog, t.Fs, t.config, compatibilityJob, updates)
 	if err != nil {
 		return err
 	}
