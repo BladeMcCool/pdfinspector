@@ -3,6 +3,7 @@ package tuner
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/rs/zerolog/log"
 	"os"
 	"path/filepath"
@@ -202,4 +203,85 @@ func ExtractText(data interface{}) string {
 func stripStringOfWhiteSpace(in string) string {
 	//all instances of whitespace (spaces, tabs etc, should we use a strings.Replace or a regexp?
 	return spaceStripRe.ReplaceAllString(in, "")
+}
+
+func resumeComposePrompt(job *job.Job, keywords []string) string {
+	kwPrompt := ""
+	if len(keywords) > 0 {
+		kwPrompt = "The adjusted resume data should contain as many of the following keywords as is reasonable/possible: " + strings.Join(keywords, ", ") + "\n"
+	}
+	prompt_parts := []string{
+		job.MainPrompt,
+		"\n--- start job description ---\n",
+		job.JobDescription,
+		"\n--- end job description ---\n",
+		kwPrompt,
+		"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
+		job.BaselineJSON,
+	}
+
+	//perhaps the resumedata should be at the start and the instructions of what to do with it should come after? need to a/b test this stuff somehow.
+	//prompt_parts := []string{
+	//	"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
+	//	baselineJSON,
+	//	"\n--- start job description ---\n",
+	//	input.JD,
+	//	"\n--- end job description ---\n",
+	//	kwPrompt,
+	//	mainPrompt,
+	//}
+
+	return strings.Join(prompt_parts, "")
+}
+
+func coverletterComposePrompt(job *job.Job, keywords []string) string {
+
+	// cover letter prompt is a little different and can also refer to resumedata supplement.
+
+	log.Trace().Msgf("coverletterComposePrompt: job %s", spew.Sprint(job))
+
+	var supplement string
+	if job.SupplementData != nil {
+		//ok so this will be the raw json from a template. not sure i want to just jam that right into a prompt lol! ... so for now, i will extract the 'resumedata'
+		var decoded interface{}
+		err := json.Unmarshal(job.SupplementData, &decoded)
+		if err == nil {
+			if resumedata, ok := decoded.(map[string]interface{})["resumedata"]; ok {
+				reEncoded, err := json.Marshal(resumedata)
+				if err == nil {
+					supplement = string(reEncoded)
+					log.Info().Msgf("reencoded just the resumedata to: %s", supplement)
+				}
+			}
+		}
+	}
+
+	prompt_parts := []string{}
+	if supplement != "" {
+		prompt_parts = append(prompt_parts, []string{
+			"Candidate info to inform and supplement the contents of the cover letter:\n",
+			"\n--- start candidate info ---\n",
+			supplement,
+			"\n--- end candidate info ---\n",
+		}...)
+	}
+
+	prompt_parts = append(prompt_parts, []string{
+		job.MainPrompt,
+		"\n--- start job description ---\n",
+		job.JobDescription,
+		"\n--- end job description ---\n",
+	}...)
+
+	if len(keywords) > 0 {
+		prompt_parts = append(prompt_parts, "The adjusted cover letter data should contain as many of the following keywords as is reasonable/possible: "+strings.Join(keywords, ", ")+"\n")
+	}
+
+	//for now lets include a baseline cover letter but i'd like to be able to control whether we do this or not somehow, because if a supplementary info is included then i'm not sure some predefined cover letter adds any value or might just confuse the gpt context
+	prompt_parts = append(prompt_parts, []string{
+		"The following JSON cover letter data represents a draft version supplied by the candidate. We should improve upon it or completely rewrite it if needed.\n",
+		job.BaselineJSON,
+	}...)
+
+	return strings.Join(prompt_parts, "")
 }

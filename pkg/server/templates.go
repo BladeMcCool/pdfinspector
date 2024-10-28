@@ -200,12 +200,6 @@ func (s *pdfInspectorServer) validateResumeDataAgainstTemplateSchema(layout stri
 	return nil
 }
 
-func DirtyReplaceFunc(input string) string {
-	// Replace the characters that cause issues
-	input = strings.ReplaceAll(input, "%28", "(")
-	input = strings.ReplaceAll(input, "%29", ")")
-	return input
-}
 func (s *pdfInspectorServer) getTemplateObjectName(r *http.Request) string {
 	userID, _ := r.Context().Value("ssoSubject").(string)
 	//templateID := chi.URLParam(r, "templateID")
@@ -220,8 +214,7 @@ func (s *pdfInspectorServer) getTemplateObjectName(r *http.Request) string {
 	// .....
 	// maybe if i can find the time and inspiration i'll go rip into it and create a PR to fix it.
 
-	templateObjectName := fmt.Sprintf("sso/%s/template/%s.json", userID, objectName)
-	templateObjectName = DirtyReplaceFunc(templateObjectName)
+	templateObjectName := formatTemplateObjectName(userID, objectName)
 	return templateObjectName
 }
 

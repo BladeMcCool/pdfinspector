@@ -10,7 +10,6 @@ import (
 	"pdfinspector/pkg/config"
 	"pdfinspector/pkg/filesystem"
 	"pdfinspector/pkg/job"
-	"strings"
 	"time"
 )
 
@@ -32,34 +31,13 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 	}
 	SendJobUpdate(updates, "got any JD meta")
 
-	//panic("does it look right - before proceeding")
-	kwPrompt := ""
-	if len(jDMetaDecoded.Keywords) > 0 {
-		kwPrompt = "The adjusted resume data should contain as many of the following keywords as is reasonable/possible: " + strings.Join(jDMetaDecoded.Keywords, ", ") + "\n"
-	}
-	prompt_parts := []string{
-		job.MainPrompt,
-		"\n--- start job description ---\n",
-		job.JobDescription,
-		"\n--- end job description ---\n",
-		kwPrompt,
-		"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
-		job.BaselineJSON,
+	prompt, err := t.GetCompletePromptForLayout(job, jDMetaDecoded.Keywords)
+	if err != nil {
+		return err
 	}
 
-	//perhaps the resumedata should be at the start and the instructions of what to do with it should come after? need to a/b test this stuff somehow.
-	//prompt_parts := []string{
-	//	"The following JSON resume data represents the work history, skills, competencies and education for the candidate:\n",
-	//	baselineJSON,
-	//	"\n--- start job description ---\n",
-	//	input.JD,
-	//	"\n--- end job description ---\n",
-	//	kwPrompt,
-	//	mainPrompt,
-	//}
-
-	prompt := strings.Join(prompt_parts, "")
 	expectResponseSchema, err := t.GetExpectedResponseJsonSchema(job.Layout)
+
 	// Create a map to represent the API request structure
 	data := map[string]interface{}{
 		"model": "gpt-4o-mini",
@@ -101,7 +79,6 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 	messages := data["messages"].([]map[string]interface{}) //preserve orig
 
 	var attemptsLog []inspectResult
-
 	for i := 0; i < job.MaxAttempts; i++ {
 		api_request_pretty, err := serializeToJSON(data)
 		if err != nil {
@@ -242,7 +219,7 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 			//data["messages"] = messages
 		}
 	}
-	err = saveBestAttemptToGCS(attemptsLog, t.Fs, t.config, job, updates)
+	err = t.saveBestAttemptToGCS(attemptsLog, t.Fs, t.config, job, updates)
 	if err != nil {
 		return err
 	}
@@ -251,7 +228,7 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 }
 
 // alright this is my cheesy naive implementation that just reads the file and then writes it but in short order i'd like to try out streaming it from fs to gcs with code similar to what is commented below this func implementation
-func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, config *config.ServiceConfig, job *job.Job, updates chan job.JobStatus) error {
+func (t *Tuner) saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, config *config.ServiceConfig, job *job.Job, updates chan job.JobStatus) error {
 	//only if we're using gs fs of course.
 	if config.FsType != "gcs" {
 		return nil //not an error, but we can't proceed with gcs stuff without this being gcs.
@@ -266,7 +243,7 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 		return err
 	}
 
-	copyToFilename := "Resume.pdf"
+	copyToFilename := TUNER_DEFAULT_OUTPUT_FILENAME
 	outputFilePath := fmt.Sprintf("%s/%s", job.OutputDir, copyToFilename) //maybe can save with the principals name instead? probably output filename options should be part of the job (name explicitly, name based on candidate data field, invent a name, etc)
 	job.Log().Info().Msgf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex)
 	SendJobUpdate(updates, fmt.Sprintf("saving resume PDF data to GCS, selected attempt index %d as best", bestAttemptIndex))
@@ -294,7 +271,8 @@ func saveBestAttemptToGCS(results []inspectResult, fs filesystem.FileSystem, con
 
 	//so long as there is a sso UserID attached to the job, make a note of it with an empty file under a special path (of which we can list prefixes later to find all our generations for that sso id)
 	if job.UserID != "" {
-		genObjPath := fmt.Sprintf("sso/%s/gen/%s", job.UserID, job.Id)
+		//so while the file will always actually be Output.pdf we can save a better filename here, for the users generations list.
+		genObjPath := fmt.Sprintf("sso/%s/gen/%s/%s", job.UserID, job.Id, t.GetOuputFileName(job.Layout))
 		job.Log().Info().Msgf("should note sso ownership at %s", genObjPath)
 		fs.WriteFile(genObjPath, []byte{})
 	}

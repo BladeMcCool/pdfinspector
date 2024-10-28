@@ -74,9 +74,10 @@ func (s *pdfInspectorServer) initRoutes() {
 	router.Use(s.SSOUserDetectionMiddleware)
 
 	// Define open routes
-	router.Get("/", s.rootHandler)                 // Root handler
-	router.Get("/health", s.healthHandler)         // Health check handler
-	router.Get("/joboutput/*", s.jobOutputHandler) // Get the output
+	router.Get("/", s.rootHandler)                                  // Root handler
+	router.Get("/health", s.healthHandler)                          // Health check handler
+	router.Get("/joboutput/{genId}/{filename}", s.jobOutputHandler) // Get the output
+	router.Get("/joboutput/{genId}", s.legacyJobOutputHandler)      // Get the output
 	router.Get("/schema/{layout}", s.GetJsonSchemaHandler)
 	router.Get("/getapitoken", s.GetAPIToken)
 	router.Get("/getusergenids", s.GetUserGenIDsHandler)
@@ -158,7 +159,7 @@ func (s *pdfInspectorServer) streamJobHandler(w http.ResponseWriter, r *http.Req
 		err := inputJob.ValidateForNonAdmin()
 		if err != nil {
 			log.Error().Msgf("invalid inputJob %v", err)
-			http.Error(w, "Bad Request: invalid inputJob", http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Bad Request: invalid inputJob: %s", err.Error()), http.StatusBadRequest)
 			return
 		}
 		userKey, _ := r.Context().Value("userKey").(string)
@@ -314,19 +315,20 @@ func (s *pdfInspectorServer) streamRenderHandler(w http.ResponseWriter, r *http.
 	}
 }
 
-func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Request) {
-	//todo can we update this for path params now that we are using chi?
-	// Extract the path and split it by '/'
-	pathParts := strings.Split(r.URL.Path, "/")
-	// should become stuff like []string{"","jobresult","somejobid","somepdf"}
-	if len(pathParts) < 4 {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
-		return
-	}
+func (s *pdfInspectorServer) legacyJobOutputHandler(w http.ResponseWriter, r *http.Request) {
+	resultPath := strings.Join([]string{"outputs", chi.URLParam(r, "genId"), "Resume.pdf"}, "/")
+	s.returnOutputFromGcs(w, r, resultPath, "Resume.pdf")
+}
 
-	// Rejoin everything after "/jobresult/"
-	// pathParts[2:] contains everything after "/jobresult/"
-	resultPath := strings.Join(append([]string{"outputs"}, pathParts[2:]...), "/")
+func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Request) {
+	resultPath := strings.Join([]string{"outputs", chi.URLParam(r, "genId"), tuner.TUNER_DEFAULT_OUTPUT_FILENAME}, "/")
+	fileName := chi.URLParam(r, "filename")
+	s.returnOutputFromGcs(w, r, resultPath, fileName)
+}
+
+func (s *pdfInspectorServer) returnOutputFromGcs(w http.ResponseWriter, r *http.Request, resultPath, fileName string) {
+	//fileName is the filename that we should use to send it back to client with
+	//resultPath is where in GCS it actually is. (ug usually Output.pdf or for legacy was Resume.pdf before I decided to be more generic after introducing cover letter ha ha)
 
 	// Use the rejoined path as needed
 	log.Info().Msgf("Result Path: %s", resultPath)
@@ -339,7 +341,7 @@ func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Req
 	log.Info().Msgf("Read %d bytes of data from GCS", len(data))
 
 	// Infer the Content-Type based on the file extension
-	fileName := pathParts[len(pathParts)-1]
+	//fileName := pathParts[len(pathParts)-1]
 	log.Info().Msgf("Send back with filename: %s", fileName)
 	ext := filepath.Ext(fileName)
 	mimeType := mime.TypeByExtension(ext)
@@ -435,7 +437,21 @@ func (s *pdfInspectorServer) deductUserCredit(ctx context.Context, userKey strin
 func (s *pdfInspectorServer) GetJsonSchemaHandler(w http.ResponseWriter, r *http.Request) {
 	layout := chi.URLParam(r, "layout")
 	log.Info().Msgf("here in GetJsonSchemaHandler for %s", layout)
-	schema, err := s.jobRunner.Tuner.GetCompleteJsonSchema(layout)
+
+	var err error
+	var schema interface{}
+	variant := r.URL.Query().Get("variant")
+	if variant != "" {
+		// Set Content-Disposition to "inline" to display in the browser
+		if variant == "response" {
+			schema, err = s.jobRunner.Tuner.GetExpectedResponseJsonSchema(layout)
+		} else {
+			err = fmt.Errorf("Unknown schema variant: %s", variant)
+		}
+	} else {
+		schema, err = s.jobRunner.Tuner.GetCompleteJsonSchema(layout)
+	}
+
 	if err != nil {
 		http.NotFound(w, r)
 		return

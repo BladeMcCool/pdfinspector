@@ -261,6 +261,10 @@ func dumpPDFToPNG(attempt int, outputDir string, config *config.ServiceConfig) e
 	if strings.Contains(string(data), "Error loading data: Failed to fetch") {
 		return fmt.Errorf("'Error loading data: Failed to fetch' string detected in PDF contents.")
 	}
+	if strings.Contains(string(data), "Unsupported resume layout: ") {
+		return fmt.Errorf("'Unsupported resume layout: ' string detected in PDF contents.")
+	}
+
 	log.Trace().Msg("Here before proceeding to image dumping")
 
 	if config.UseSystemGs {

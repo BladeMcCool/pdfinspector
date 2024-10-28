@@ -183,3 +183,10 @@ func sortAndSerializeGenerations(generations []generationInfo) (string, error) {
 
 	return string(jsonData), nil
 }
+
+// todo maybe this should be a function of the job struct? then i could re-use it better in the tuner GetJobSupplement.
+//  idk i feel like i'm just making a mess and that code is all over the place.
+
+func formatTemplateObjectName(userID, objectName string) string {
+	return fmt.Sprintf("sso/%s/template/%s.json", userID, objectName)
+}

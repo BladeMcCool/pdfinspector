@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["personal_info", "letter_contents", "closing", "date", "company_info"],
+  "properties": {
+    "personal_info": {
+      "title": "Personal Info",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "email", "phone", "linkedin", "location", "github"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "Full Name",
+          "description": "The candidate's full name.",
+          "default": ""
+        },
+        "email": {
+          "type": "string",
+          "title": "Email",
+          "description": "The candidate's email address.",
+          "default": ""
+        },
+        "phone": {
+          "type": "string",
+          "title": "Telephone",
+          "description": "The candidate's phone number.",
+          "default": ""
+        },
+        "linkedin": {
+          "type": ["string", "null"],
+          "title": "LinkedIn Profile URL",
+          "description": "The candidate's LinkedIn profile URL.",
+          "default": null
+        },
+        "location": {
+          "type": "string",
+          "title": "City, State",
+          "description": "The candidate's city and province/state.",
+          "default": ""
+        },
+        "github": {
+          "type": ["string", "null"],
+          "title": "GitHub URL",
+          "description": "The candidate's GitHub profile URL.",
+          "default": null
+        }
+      }
+    },
+    "company_info": {
+      "title": "Company Info",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["company_name", "organization_name"],
+      "properties": {
+        "company_name": {
+          "type": ["string", "null"],
+          "title": "Company Name",
+          "description": "The name of the company.",
+          "default": null
+        },
+        "organization_name": {
+          "type": ["string", "null"],
+          "title": "Organization Name",
+          "description": "The name of the organization.",
+          "default": null
+        }
+      }
+    },
+    "date": {
+      "type": "string",
+      "title": "Date",
+      "description": "The date of the cover letter. If left blank, today's date will be used.",
+      "default": ""
+    },
+    "letter_contents": {
+      "type": "array",
+      "title": "Letter Contents",
+      "description": "An array of paragraphs in the cover letter, usually with 'Dear {name/title},' as a first entry.",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "closing": {
+      "type": "string",
+      "title": "Closing",
+      "description": "A closing phrase for the letter including any trailing punctuation like comma or ellipsis, etc. e.g., 'Sincerely,'",
+      "default": "Sincerely,"
+    }
+  }
+}

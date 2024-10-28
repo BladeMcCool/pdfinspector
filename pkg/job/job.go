@@ -37,11 +37,14 @@ type Job struct {
 	Id             string
 	OverrideJobId  *string `json:"job_id,omitempty"` //generally speaking this can't be set by a user, is just for admin/testing
 	Layout         string  `json:"layout""`
+	Supplement     string  `json:"supplement""` //the identifier for a template in gcs to be used to supplement the prompt -- adding this so that i can select some saved resumedata to go along with a cover letter prompt, in addition to the custom cover letter tune data.
 
-	MainPrompt string
+	MainPrompt     string
+	SupplementData []byte //the actual content of supplement data we may have to collect from gcs
 	//ExpectResponseSchema interface{} //will get a json schema based on the layout.
 
-	OutputDir       string
+	OutputDir string
+	//OutputFilename  string //todo use this maybe?
 	AcceptableRatio float64
 	MaxAttempts     int
 	IsForAdmin      bool
@@ -56,11 +59,6 @@ type Job struct {
 	Logger *zerolog.Logger
 }
 
-var defaultAcceptableRatio = 0.88
-
-var defaultMaxAttempts = 7 //this should probably come from env
-//var defaultMaxAttempts = 1 //this should probably come from env
-
 func NewDefaultJob() *Job {
 	job := &Job{}
 	job.PrepareDefault(nil)
@@ -72,15 +70,10 @@ func (job *Job) PrepareDefault(jobId *string) {
 	} else {
 		job.Id = *jobId
 	}
-	job.AcceptableRatio = defaultAcceptableRatio
-	job.MaxAttempts = defaultMaxAttempts
+
 	job.Logger = getLogger(job.Id)
 }
 
-//	func (job *Job) OverrideJobId(jobId string) {
-//		job.Id = jobId
-//		job.Logger = job.setLogger()
-//	}
 func (job *Job) ValidateForNonAdmin() error {
 	//this is just more of a thought than perhaps a good idea. the failure modes can be many and we should just return api credits if job failed. todo.
 	if job.Baseline != "" {
@@ -102,7 +95,8 @@ func (job *Job) ValidateForNonAdmin() error {
 	}
 
 	// Check if the layout value is either "functional" or "chrono"
-	if job.Layout == "functional" || job.Layout == "chrono" {
+	// todo really i feel like i need to be able to access tuner since the allowed layouts should be just the keys of the tuners layoutDefaults, but we can't access tuner from here because tuner uess this. that would be a circular reference. i have difficulty conceptualizing best refactor approach when its going to basically need a circular reference.
+	if job.Layout == "functional" || job.Layout == "chrono" || job.Layout == "coverletter" {
 		log.Info().Msgf("The layout is: %s", job.Layout)
 	} else {
 		return errors.New("The layout is neither 'functional' nor 'chrono'")
