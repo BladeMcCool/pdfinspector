@@ -88,11 +88,10 @@ func NewTuner(config *config.ServiceConfig) *Tuner {
 
 var defaultAcceptableRatio = 0.88
 
+// var defaultMaxAttempts = 1 //this should probably come from env
 var defaultMaxAttempts = 7 //this should probably come from env
 const RESUME_FILENAME = "Resume.pdf"
 const COVERLETTER_FILENAME = "Cover Letter.pdf"
-
-//var defaultMaxAttempts = 1 //this should probably come from env
 
 type LayoutCustomization struct {
 	//min and max length for page

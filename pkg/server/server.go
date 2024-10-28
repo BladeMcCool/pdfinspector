@@ -321,23 +321,6 @@ func (s *pdfInspectorServer) legacyJobOutputHandler(w http.ResponseWriter, r *ht
 }
 
 func (s *pdfInspectorServer) jobOutputHandler(w http.ResponseWriter, r *http.Request) {
-	//todo can we update this for path params now that we are using chi?
-	// Extract the path and split it by '/'
-
-	//pathParts := strings.Split(r.URL.Path, "/")
-	//// should become stuff like []string{"","jobresult","somejobid","somepdf"}
-	//if len(pathParts) < 4 {
-	//	http.Error(w, "Invalid path", http.StatusBadRequest)
-	//	return
-	//}
-	//
-	//// Rejoin everything after "/jobresult/"
-	//// pathParts[2:] contains everything after "/jobresult/"
-	//log.Info().Msgf("Path Parts: %#v", pathParts)
-	//log.Info().Msgf("Path Parts 0: %#v", pathParts[0:])
-	//log.Info().Msgf("Path Parts 1: %#v", pathParts[1:])
-	//log.Info().Msgf("Path Parts 2: %#v", pathParts[2:])
-	//resultPath := strings.Join(append([]string{"outputs"}, pathParts[2:]...), "/")
 	resultPath := strings.Join([]string{"outputs", chi.URLParam(r, "genId"), tuner.TUNER_DEFAULT_OUTPUT_FILENAME}, "/")
 	fileName := chi.URLParam(r, "filename")
 	s.returnOutputFromGcs(w, r, resultPath, fileName)

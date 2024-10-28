@@ -37,7 +37,6 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 	}
 
 	expectResponseSchema, err := t.GetExpectedResponseJsonSchema(job.Layout)
-	job.Log().Info().Msg("here4")
 
 	// Create a map to represent the API request structure
 	data := map[string]interface{}{
@@ -80,11 +79,7 @@ func (t *Tuner) TuneResumeContents(job *job.Job, updates chan job.JobStatus) err
 	messages := data["messages"].([]map[string]interface{}) //preserve orig
 
 	var attemptsLog []inspectResult
-	job.Log().Info().Msg("here4.1")
-
 	for i := 0; i < job.MaxAttempts; i++ {
-		job.Log().Info().Msg("here5")
-
 		api_request_pretty, err := serializeToJSON(data)
 		if err != nil {
 			return fmt.Errorf("Failed to marshal final JSON: %v", err)
